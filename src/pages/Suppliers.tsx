@@ -28,6 +28,44 @@ interface InboundItemRow {
   costPrice: number;
 }
 
+const TileTooltip: React.FC<{
+  text: React.ReactNode;
+  plainText?: string;
+  align?: 'left' | 'right';
+  iconColor?: string;
+}> = ({ text, plainText, align = 'left', iconColor = 'text-slate-400 hover:text-slate-600' }) => {
+  return (
+    <span
+      className="relative group/tip inline-flex items-center ml-1.5 align-middle"
+      tabIndex={0}
+      title={plainText || (typeof text === 'string' ? text : undefined)}
+    >
+      <span className={`cursor-help transition-colors ${iconColor}`}>
+        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+      </span>
+      <div
+        role="tooltip"
+        className={`absolute bottom-full mb-2 hidden group-hover/tip:flex group-focus-within/tip:flex flex-col z-30 pointer-events-none transition-all ${
+          align === 'right'
+            ? 'right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 items-end sm:items-center'
+            : 'left-0 sm:left-1/2 sm:-translate-x-1/2 items-start sm:items-center'
+        }`}
+      >
+        <div className="bg-slate-900 text-white text-[11px] font-medium py-1.5 px-2.5 rounded-lg shadow-xl text-center leading-snug w-48 sm:w-56 whitespace-normal normal-case tracking-normal">
+          {text}
+        </div>
+        <div
+          className={`w-2 h-2 bg-slate-900 rotate-45 -mt-1 ${
+            align === 'right'
+              ? 'mr-1 sm:mr-0'
+              : 'ml-1 sm:ml-0'
+          }`}
+        />
+      </div>
+    </span>
+  );
+};
+
 export const Suppliers: React.FC = () => {
   const { formatMoney } = useCurrency();
 
@@ -426,9 +464,12 @@ export const Suppliers: React.FC = () => {
         {/* Active Suppliers */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Active Suppliers
-            </span>
+            <div className="flex items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Active Suppliers
+              </span>
+              <TileTooltip align="left" text="FMCG Brands & Refineries" />
+            </div>
             <div className="w-8 h-8 rounded-xl bg-blue-50 text-blue-600 flex items-center justify-center">
               <Building2 className="w-4 h-4" />
             </div>
@@ -436,17 +477,17 @@ export const Suppliers: React.FC = () => {
           <div className="text-2xl font-black font-mono text-slate-900">
             {totalSuppliersCount} Partners
           </div>
-          <div className="text-xs text-slate-400">
-            FMCG Brands & Refineries
-          </div>
         </div>
 
         {/* Total Inward Shipments */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Inbound GRNs Processed
-            </span>
+            <div className="flex items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Inbound GRNs Processed
+              </span>
+              <TileTooltip align="right" text="Wired to Warehouse Inventory" />
+            </div>
             <div className="w-8 h-8 rounded-xl bg-emerald-50 text-emerald-600 flex items-center justify-center">
               <Package className="w-4 h-4" />
             </div>
@@ -454,17 +495,17 @@ export const Suppliers: React.FC = () => {
           <div className="text-2xl font-black font-mono text-slate-900">
             {totalGRNsCount} Inward Receipts
           </div>
-          <div className="text-xs text-emerald-600 font-semibold">
-            Wired to Warehouse Inventory
-          </div>
         </div>
 
         {/* Total Procurement Spend */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Total Inward Procurement
-            </span>
+            <div className="flex items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Total Inward Procurement
+              </span>
+              <TileTooltip align="left" text="All-time Stock Purchases" />
+            </div>
             <div className="w-8 h-8 rounded-xl bg-purple-50 text-purple-600 flex items-center justify-center">
               <DollarSign className="w-4 h-4" />
             </div>
@@ -472,26 +513,23 @@ export const Suppliers: React.FC = () => {
           <div className="text-2xl font-black font-mono text-slate-900">
             {formatMoney(totalProcurementSpend)}
           </div>
-          <div className="text-xs text-slate-400">
-            All-time Stock Purchases
-          </div>
         </div>
 
         {/* Outstanding Payables */}
         <div className="bg-white p-5 rounded-3xl border border-slate-200/80 shadow-2xs space-y-2">
           <div className="flex items-center justify-between">
-            <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
-              Outstanding Payables
-            </span>
+            <div className="flex items-center">
+              <span className="text-xs font-bold uppercase tracking-wider text-slate-500">
+                Outstanding Payables
+              </span>
+              <TileTooltip align="right" text="Owed to suppliers for credit terms" />
+            </div>
             <div className="w-8 h-8 rounded-xl bg-amber-50 text-amber-600 flex items-center justify-center">
               <Wallet className="w-4 h-4" />
             </div>
           </div>
           <div className="text-2xl font-black font-mono text-amber-600">
             {formatMoney(totalOutstandingPayable)}
-          </div>
-          <div className="text-xs text-slate-500 font-medium">
-            Owed to suppliers for credit terms
           </div>
         </div>
       </div>

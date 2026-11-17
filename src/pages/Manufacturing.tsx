@@ -18,6 +18,44 @@ import { ManufacturingService, ProductService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { ProductModal } from '../components/ProductModal';
 
+const TileTooltip: React.FC<{
+  text: React.ReactNode;
+  plainText?: string;
+  align?: 'left' | 'right';
+  iconColor?: string;
+}> = ({ text, plainText, align = 'left', iconColor = 'text-slate-400 hover:text-slate-600' }) => {
+  return (
+    <span
+      className="relative group/tip inline-flex items-center ml-1.5 align-middle"
+      tabIndex={0}
+      title={plainText || (typeof text === 'string' ? text : undefined)}
+    >
+      <span className={`cursor-help transition-colors ${iconColor}`}>
+        <AlertCircle className="w-3.5 h-3.5 shrink-0" />
+      </span>
+      <div
+        role="tooltip"
+        className={`absolute bottom-full mb-2 hidden group-hover/tip:flex group-focus-within/tip:flex flex-col z-30 pointer-events-none transition-all ${
+          align === 'right'
+            ? 'right-0 sm:right-auto sm:left-1/2 sm:-translate-x-1/2 items-end sm:items-center'
+            : 'left-0 sm:left-1/2 sm:-translate-x-1/2 items-start sm:items-center'
+        }`}
+      >
+        <div className="bg-slate-900 text-white text-[11px] font-medium py-1.5 px-2.5 rounded-lg shadow-xl text-center leading-snug w-48 sm:w-56 whitespace-normal normal-case tracking-normal">
+          {text}
+        </div>
+        <div
+          className={`w-2 h-2 bg-slate-900 rotate-45 -mt-1 ${
+            align === 'right'
+              ? 'mr-1 sm:mr-0'
+              : 'ml-1 sm:ml-0'
+          }`}
+        />
+      </div>
+    </span>
+  );
+};
+
 export const Manufacturing: React.FC = () => {
   const { formatMoney } = useCurrency();
 
@@ -288,43 +326,51 @@ export const Manufacturing: React.FC = () => {
       {/* Minimal KPI Metric Cards */}
       <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 sm:gap-4">
         <div className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-2xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Completed Batches
-          </span>
+          <div className="flex items-center mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Completed Batches
+            </span>
+            <TileTooltip align="left" text="Production runs executed" />
+          </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900">
             {summary?.totalBatchesCount || productionRuns.length}
           </div>
-          <span className="text-[10px] font-medium text-slate-500 mt-1 block">Production runs executed</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-2xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Manufactured Output
-          </span>
+          <div className="flex items-center mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Manufactured Output
+            </span>
+            <TileTooltip align="right" text="Added to warehouse inventory" />
+          </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-emerald-600">
             {summary?.totalUnitsManufactured?.toLocaleString() || 0} Units
           </div>
-          <span className="text-[10px] font-medium text-slate-500 mt-1 block">Added to warehouse inventory</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-2xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Active BOM Formulas
-          </span>
+          <div className="flex items-center mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Active BOM Formulas
+            </span>
+            <TileTooltip align="left" text="Configured product recipes" />
+          </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-blue-600">
             {recipes.length} Recipes
           </div>
-          <span className="text-[10px] font-medium text-slate-500 mt-1 block">Configured product recipes</span>
         </div>
 
         <div className="bg-white border border-slate-200/80 p-4 sm:p-5 rounded-3xl shadow-2xs">
-          <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
-            Total Production Spend
-          </span>
+          <div className="flex items-center mb-1">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400">
+              Total Production Spend
+            </span>
+            <TileTooltip align="right" text="Direct materials & overhead" />
+          </div>
           <div className="text-xl sm:text-2xl font-bold font-mono text-slate-900">
             {formatMoney(summary?.totalProductionCost || 0)}
           </div>
-          <span className="text-[10px] font-medium text-slate-500 mt-1 block">Direct materials & overhead</span>
         </div>
       </div>
 
