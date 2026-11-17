@@ -255,9 +255,6 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   Sales Reps Live Performance & Route Tracking
                 </h2>
               </div>
-              <p className="text-xs text-slate-500 mt-1">
-                Real-time route quota monitoring, daily run rates, and monthly targets across sales field reps.
-              </p>
             </div>
             <span className="text-xs font-semibold text-slate-600 bg-slate-50 border border-slate-200 px-3 py-1 rounded-xl self-start sm:self-auto flex items-center gap-1.5">
               <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse"></span>
