@@ -140,15 +140,15 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
   // 4. Customer Information
   addLine(dividerLine('-'));
   addBytes(COMMANDS.BOLD_ON);
-  addLine(`Customer: ${order.customer.name} [${order.customer.code}]`);
+  addLine(`Customer: ${order.customer?.name || 'Walk-in Customer'} ${order.customer?.code ? `[${order.customer.code}]` : ''}`);
   addBytes(COMMANDS.BOLD_OFF);
-  if (order.customer.companyName) {
+  if (order.customer?.companyName) {
     addLine(`Shop: ${order.customer.companyName}`);
   }
-  if (order.customer.deliveryAddress || order.customer.city) {
+  if (order.customer?.deliveryAddress || order.customer?.city) {
     addLine(`Addr: ${order.customer.deliveryAddress || order.customer.city}`);
   }
-  if (order.customer.phone) {
+  if (order.customer?.phone) {
     addLine(`Phone: ${order.customer.phone}`);
   }
   addLine(dividerLine('-'));
@@ -162,13 +162,13 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
 
   // 6. Items
   let totalFreeQty = 0;
-  order.items.forEach((item) => {
+  (order.items || []).forEach((item) => {
     // Line 1: Item Name (truncated if exceeds width)
-    const nameStr = item.product.name.slice(0, RECEIPT_WIDTH);
+    const nameStr = (item.product?.name || 'Item').slice(0, RECEIPT_WIDTH);
     addLine(nameStr);
 
     // Line 2: Qty x UnitPrice and Line Total
-    const qtyPrice = `  ${item.quantity} ${item.product.unit || 'pcs'} x Rs.${item.unitPrice.toFixed(2)}`;
+    const qtyPrice = `  ${item.quantity} ${item.product?.unit || 'pcs'} x Rs.${item.unitPrice.toFixed(2)}`;
     const lineTot = `Rs.${item.lineTotal.toFixed(2)}`;
     addLine(padTwoColumns(qtyPrice, lineTot));
 
@@ -176,7 +176,7 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
     if (item.freeQuantity && item.freeQuantity > 0) {
       totalFreeQty += item.freeQuantity;
       addBytes(COMMANDS.BOLD_ON);
-      addLine(`  >> FREE PROMO: +${item.freeQuantity} ${item.product.unit || 'pcs'} (Rs.0.00)`);
+      addLine(`  >> FREE PROMO: +${item.freeQuantity} ${item.product?.unit || 'pcs'} (Rs.0.00)`);
       addBytes(COMMANDS.BOLD_OFF);
     }
   });

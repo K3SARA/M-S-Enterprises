@@ -5882,7 +5882,13 @@ app.get('/api/reports/dashboard-stats', async (req: Request, res: Response) => {
             lte: endDate
           }
         },
-        include: { customer: true, lorry: true, route: true },
+        include: {
+          customer: true,
+          lorry: true,
+          route: true,
+          items: { include: { product: true } },
+          returns: { include: { product: true } }
+        },
         orderBy: { createdAt: 'desc' }
       }),
       prisma.product.findMany({

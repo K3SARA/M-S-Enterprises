@@ -10,7 +10,7 @@ import {
 } from 'lucide-react';
 import { Order, SystemSettings } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
-import { SettingsService } from '../services/api';
+import { OrderService, SettingsService } from '../services/api';
 import {
   printToBluetoothThermalPrinter
 } from '../utils/bluetoothPrinter';
@@ -32,30 +32,52 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [btStatus, setBtStatus] = useState<string | null>(null);
   const [btLoading, setBtLoading] = useState<boolean>(false);
   const [btSuccess, setBtSuccess] = useState<boolean>(false);
+  const [loadedOrder, setLoadedOrder] = useState<Order | null>(order);
+  const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
 
   useEffect(() => {
+    setLoadedOrder(order);
     if (order) {
       SettingsService.get()
         .then((s) => setCompanySettings(s))
         .catch(() => {});
+
+      if (order.id && (!order.items || order.items.length === 0)) {
+        setLoadingDetails(true);
+        OrderService.getById(order.id)
+          .then((fullOrder) => {
+            if (fullOrder) setLoadedOrder(fullOrder);
+          })
+          .catch((err) => {
+            console.error('Failed to fetch full order details:', err);
+          })
+          .finally(() => setLoadingDetails(false));
+      }
     }
   }, [order]);
 
-  if (!order) return null;
+  const activeOrder = loadedOrder || order;
+
+  if (!activeOrder) return null;
+
+  const items = activeOrder.items || [];
+  const returns = activeOrder.returns || [];
+  const customer = activeOrder.customer;
+  const lorry = activeOrder.lorry;
 
   const handleSystemPrint = () => {
     window.print();
   };
 
   const handleBluetoothPrint = async () => {
-    if (!order) return;
+    if (!activeOrder) return;
     setBtLoading(true);
     setBtStatus('Initializing Bluetooth...');
     setBtSuccess(false);
 
     try {
       const result = await printToBluetoothThermalPrinter(
-        order,
+        activeOrder,
         companySettings,
         (status) => setBtStatus(status)
       );
@@ -121,9 +143,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </button>
             </div>
 
-            {order.paperBillNumber && (
+            {activeOrder.paperBillNumber && (
               <span className="text-[11px] font-mono font-bold px-2 py-0.5 rounded-full bg-slate-100 border border-slate-200 text-slate-700 hidden sm:inline">
-                Slip: {order.paperBillNumber}
+                Slip: {activeOrder.paperBillNumber}
               </span>
             )}
           </div>
@@ -231,21 +253,21 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {/* Bill Details */}
               <div className="space-y-0.5 text-[10px]">
                 <div className="flex justify-between">
-                  <span>Date: {new Date(order.createdAt).toLocaleDateString()}</span>
-                  <span>Time: {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
+                  <span>Date: {new Date(activeOrder.createdAt).toLocaleDateString()}</span>
+                  <span>Time: {new Date(activeOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}</span>
                 </div>
                 <div className="flex justify-between font-bold">
-                  <span>Bill #: {order.paperBillNumber || order.orderNumber}</span>
-                  <span>Ref: {order.orderNumber}</span>
+                  <span>Bill #: {activeOrder.paperBillNumber || activeOrder.orderNumber}</span>
+                  <span>Ref: {activeOrder.orderNumber}</span>
                 </div>
-                {order.lorry && (
+                {lorry && (
                   <div>
-                    <span className="font-semibold">Lorry:</span> {order.lorry.vehicleNumber} ({order.lorry.driverName})
+                    <span className="font-semibold">Lorry:</span> {lorry.vehicleNumber} ({lorry.driverName})
                   </div>
                 )}
-                {(order.route?.name || order.lorry?.route?.name) && (
+                {(activeOrder.route?.name || lorry?.route?.name) && (
                   <div>
-                    <span className="font-semibold">Route:</span> {order.route?.name || order.lorry?.route?.name}
+                    <span className="font-semibold">Route:</span> {activeOrder.route?.name || lorry?.route?.name}
                   </div>
                 )}
               </div>
@@ -254,16 +276,16 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="border-t border-black border-dashed my-1.5" />
               <div className="text-[10px] space-y-0.5">
                 <div className="font-bold">
-                  Customer: {order.customer.name} [{order.customer.code}]
+                  Customer: {customer?.name || 'Walk-in Customer'} {customer?.code ? `[${customer.code}]` : ''}
                 </div>
-                {order.customer.companyName && (
-                  <div>Shop: {order.customer.companyName}</div>
+                {customer?.companyName && (
+                  <div>Shop: {customer.companyName}</div>
                 )}
-                {(order.customer.deliveryAddress || order.customer.city) && (
-                  <div>Addr: {order.customer.deliveryAddress || order.customer.city}</div>
+                {(customer?.deliveryAddress || customer?.city) && (
+                  <div>Addr: {customer?.deliveryAddress || customer?.city}</div>
                 )}
-                {order.customer.phone && (
-                  <div>Tel: {order.customer.phone}</div>
+                {customer?.phone && (
+                  <div>Tel: {customer.phone}</div>
                 )}
               </div>
 
@@ -276,18 +298,29 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="border-t border-black border-dashed mb-1.5" />
 
               <div className="space-y-1.5 text-[10px]">
-                {order.items.map((item) => (
+                {loadingDetails && (
+                  <div className="flex items-center justify-center gap-1.5 py-3 text-slate-500 font-sans">
+                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0C3B9B]" />
+                    <span>Loading items...</span>
+                  </div>
+                )}
+                {items.length === 0 && !loadingDetails && (
+                  <div className="text-center py-2 text-slate-400 font-sans italic text-[9.5px]">
+                    No items recorded for this bill.
+                  </div>
+                )}
+                {items.map((item) => (
                   <div key={item.id} className="leading-tight">
-                    <div className="font-bold break-words">{item.product.name}</div>
+                    <div className="font-bold break-words">{item.product?.name || 'Item'}</div>
                     <div className="flex justify-between pl-1">
                       <span>
-                        {item.quantity} {item.product.unit || 'pcs'} x {formatMoney(item.unitPrice)}
+                        {item.quantity} {item.product?.unit || 'pcs'} x {formatMoney(item.unitPrice)}
                       </span>
                       <span className="font-bold">{formatMoney(item.lineTotal)}</span>
                     </div>
                     {item.freeQuantity > 0 && (
                       <div className="pl-1 font-bold text-[9px] text-black">
-                        &gt;&gt; FREE PROMO: +{item.freeQuantity} {item.product.unit || 'pcs'} (Rs. 0.00)
+                        &gt;&gt; FREE PROMO: +{item.freeQuantity} {item.product?.unit || 'pcs'} (Rs. 0.00)
                       </div>
                     )}
                   </div>
@@ -295,7 +328,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
 
               {/* Returned & Damaged Items (80mm) */}
-              {order.returns && order.returns.length > 0 && (
+              {returns && returns.length > 0 && (
                 <>
                   <div className="border-t border-black border-dashed my-1.5" />
                   <div className="flex justify-between font-bold text-[10px] pb-1">
@@ -304,7 +337,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   </div>
                   <div className="border-t border-black border-dashed mb-1.5" />
                   <div className="space-y-1 text-[10px]">
-                    {order.returns.map((ret) => (
+                    {returns.map((ret) => (
                       <div key={ret.id} className="leading-tight">
                         <div className="font-bold break-words">
                           [{ret.returnType === 'DAMAGE' ? 'DMG' : 'RET'}] {ret.product?.name || 'Product'}
@@ -327,68 +360,68 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="space-y-1 text-[10px]">
                 <div className="flex justify-between">
                   <span>Subtotal:</span>
-                  <span>{formatMoney(order.subtotal)}</span>
+                  <span>{formatMoney(activeOrder.subtotal || 0)}</span>
                 </div>
 
-                {order.items.some((i) => (i.freeQuantity || 0) > 0) && (
+                {items.some((i) => (i.freeQuantity || 0) > 0) && (
                   <div className="flex justify-between font-semibold">
                     <span>Promotional Units:</span>
                     <span>
-                      {order.items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0)} Free pcs
+                      {items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0)} Free pcs
                     </span>
                   </div>
                 )}
 
-                {order.discountAmount > 0 && (
+                {(activeOrder.discountAmount || 0) > 0 && (
                   <div className="flex justify-between">
                     <span>Discount:</span>
-                    <span>-{formatMoney(order.discountAmount)}</span>
+                    <span>-{formatMoney(activeOrder.discountAmount)}</span>
                   </div>
                 )}
 
-                {order.returnAmount !== undefined && order.returnAmount > 0 && (
+                {activeOrder.returnAmount !== undefined && activeOrder.returnAmount > 0 && (
                   <div className="flex justify-between font-bold">
                     <span>Returns / Damages:</span>
-                    <span>-{formatMoney(order.returnAmount)}</span>
+                    <span>-{formatMoney(activeOrder.returnAmount)}</span>
                   </div>
                 )}
 
                 <div className="border-t-2 border-black my-1" />
                 <div className="flex justify-between text-xs font-black py-0.5">
                   <span>NET TOTAL:</span>
-                  <span>{formatMoney(order.netTotal)}</span>
+                  <span>{formatMoney(activeOrder.netTotal || 0)}</span>
                 </div>
                 <div className="border-t-2 border-black my-1" />
 
                 <div className="flex justify-between">
                   <span>Payment Method:</span>
-                  <span className="font-bold">{order.paymentMethod || 'CASH'}</span>
+                  <span className="font-bold">{activeOrder.paymentMethod || 'CASH'}</span>
                 </div>
                 <div className="flex justify-between">
                   <span>Amount Paid:</span>
-                  <span className="font-bold">{formatMoney(order.cashReceived || 0)}</span>
+                  <span className="font-bold">{formatMoney(activeOrder.cashReceived || 0)}</span>
                 </div>
 
-                {order.netTotal - (order.cashReceived || 0) > 0 && (
+                {(activeOrder.netTotal || 0) - (activeOrder.cashReceived || 0) > 0 && (
                   <div className="flex justify-between font-bold">
                     <span>Credit Balance Due:</span>
-                    <span>{formatMoney(order.netTotal - (order.cashReceived || 0))}</span>
+                    <span>{formatMoney((activeOrder.netTotal || 0) - (activeOrder.cashReceived || 0))}</span>
                   </div>
                 )}
 
-                {(order.cashReceived || 0) > order.netTotal && (
+                {(activeOrder.cashReceived || 0) > (activeOrder.netTotal || 0) && (
                   <div className="flex justify-between font-bold">
                     <span>Change Returned:</span>
-                    <span>{formatMoney((order.cashReceived || 0) - order.netTotal)}</span>
+                    <span>{formatMoney((activeOrder.cashReceived || 0) - (activeOrder.netTotal || 0))}</span>
                   </div>
                 )}
               </div>
 
-              {order.notes && (
+              {activeOrder.notes && (
                 <>
                   <div className="border-t border-black border-dashed my-1.5" />
                   <div className="text-[9px]">
-                    <span className="font-bold">Notes:</span> {order.notes}
+                    <span className="font-bold">Notes:</span> {activeOrder.notes}
                   </div>
                 </>
               )}
@@ -412,7 +445,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   <div>
                     <p className="font-bold mb-3">Delivered By:</p>
                     <div className="border-b border-black w-24"></div>
-                    <p className="mt-0.5 text-[8px]">{order.lorry?.driverName || 'Driver Sign'}</p>
+                    <p className="mt-0.5 text-[8px]">{lorry?.driverName || 'Driver Sign'}</p>
                   </div>
                   <div className="text-right">
                     <p className="font-bold mb-3">Received By:</p>
@@ -439,13 +472,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     DISTRIBUTION SALES BILL
                   </h2>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500 mt-1">
-                    <span>System Ref: {order.orderNumber}</span>
-                    {order.paperBillNumber && (
-                      <span className="text-blue-600 font-bold">Paper Bill #: {order.paperBillNumber}</span>
+                    <span>System Ref: {activeOrder.orderNumber}</span>
+                    {activeOrder.paperBillNumber && (
+                      <span className="text-blue-600 font-bold">Paper Bill #: {activeOrder.paperBillNumber}</span>
                     )}
                   </div>
                   <p className="text-xs text-slate-500 mt-0.5">
-                    Date: {new Date(order.createdAt).toLocaleDateString()} {new Date(order.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
+                    Date: {new Date(activeOrder.createdAt).toLocaleDateString()} {new Date(activeOrder.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })}
                   </p>
                 </div>
 
@@ -469,12 +502,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     </div>
                   </div>
 
-                  {order.lorry ? (
+                  {lorry ? (
                     <div className="text-xs text-slate-600 space-y-0.5">
                       <p className="font-semibold text-slate-900">
-                        Lorry: {order.lorry.vehicleNumber} ({order.lorry.driverName})
+                        Lorry: {lorry.vehicleNumber} ({lorry.driverName})
                       </p>
-                      <p className="text-blue-600 font-medium">Route: {order.route?.name || order.lorry.route?.name || 'Local Route'}</p>
+                      <p className="text-blue-600 font-medium">Route: {activeOrder.route?.name || lorry.route?.name || 'Local Route'}</p>
                     </div>
                   ) : (
                     <p className="text-xs text-slate-500">Warehouse Central Counter</p>
@@ -488,12 +521,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-1">
                     Retail Outlet
                   </span>
-                  <p className="font-bold text-slate-900">{order.customer.name}</p>
-                  {order.customer.companyName && (
-                    <p className="text-xs text-slate-600">{order.customer.companyName}</p>
+                  <p className="font-bold text-slate-900">{customer?.name || 'Walk-in Customer'}</p>
+                  {customer?.companyName && (
+                    <p className="text-xs text-slate-600">{customer.companyName}</p>
                   )}
-                  <p className="text-xs text-slate-600 mt-0.5">{order.customer.deliveryAddress || order.customer.city}</p>
-                  <p className="text-xs text-slate-600 font-mono">{order.customer.phone}</p>
+                  <p className="text-xs text-slate-600 mt-0.5">{customer?.deliveryAddress || customer?.city}</p>
+                  <p className="text-xs text-slate-600 font-mono">{customer?.phone}</p>
                 </div>
 
                 <div className="text-left sm:text-right">
@@ -501,17 +534,17 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     Account & Payment
                   </span>
                   <p className="text-xs text-slate-600">
-                    Client Code: <span className="font-mono font-semibold text-slate-900">{order.customer.code}</span>
+                    Client Code: <span className="font-mono font-semibold text-slate-900">{customer?.code || 'N/A'}</span>
                   </p>
                   <p className="text-xs text-slate-600">
-                    Payment Mode: <span className="font-semibold text-slate-900">{order.paymentMethod || 'CASH'}</span>
+                    Payment Mode: <span className="font-semibold text-slate-900">{activeOrder.paymentMethod || 'CASH'}</span>
                   </p>
                   <p className="text-xs text-slate-600">
-                    Status: <span className="font-semibold text-slate-900">{order.paymentStatus}</span>
+                    Status: <span className="font-semibold text-slate-900">{activeOrder.paymentStatus}</span>
                   </p>
-                  {order.notes && (
+                  {activeOrder.notes && (
                     <div className="mt-1.5 text-xs text-slate-600 bg-white p-2 rounded-lg text-left border border-slate-200">
-                      <strong>Notes:</strong> {order.notes}
+                      <strong>Notes:</strong> {activeOrder.notes}
                     </div>
                   )}
                 </div>
@@ -530,13 +563,28 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     </tr>
                   </thead>
                   <tbody className="divide-y divide-slate-100">
-                    {order.items.map((item) => (
+                    {loadingDetails && (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-slate-500">
+                          <Loader2 className="w-4 h-4 animate-spin inline-block mr-1.5 text-[#0C3B9B]" />
+                          Loading bill line items...
+                        </td>
+                      </tr>
+                    )}
+                    {items.length === 0 && !loadingDetails && (
+                      <tr>
+                        <td colSpan={5} className="p-4 text-center text-slate-400 italic">
+                          No item line records found for this bill.
+                        </td>
+                      </tr>
+                    )}
+                    {items.map((item) => (
                       <tr key={item.id}>
                         <td className="p-2.5 pl-3">
-                          <p className="font-medium text-slate-900">{item.product.name}</p>
-                          <span className="text-[10px] font-mono text-slate-400">{item.product.sku}</span>
+                          <p className="font-medium text-slate-900">{item.product?.name || 'Product'}</p>
+                          <span className="text-[10px] font-mono text-slate-400">{item.product?.sku || ''}</span>
                         </td>
-                        <td className="p-2.5 text-center text-slate-500">{item.product.unit}</td>
+                        <td className="p-2.5 text-center text-slate-500">{item.product?.unit || 'Unit'}</td>
                         <td className="p-2.5 text-center font-bold text-slate-900">
                           {item.quantity}
                           {item.freeQuantity > 0 && (
@@ -556,12 +604,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
 
               {/* Returned & Damaged Items Table (A4) */}
-              {order.returns && order.returns.length > 0 && (
+              {returns && returns.length > 0 && (
                 <div className="border border-amber-200/80 rounded-xl overflow-x-auto bg-amber-50/20">
                   <div className="px-3 py-2 bg-amber-50/80 border-b border-amber-200/80 text-[10px] font-bold text-amber-900 uppercase tracking-wider flex items-center justify-between">
                     <span>Customer Returned & Damaged Items (Credit Deductions)</span>
                     <span className="font-mono text-rose-600 font-bold">
-                      Total Return Deductions: -{formatMoney(order.returnAmount || order.returns.reduce((a, b) => a + b.total, 0))}
+                      Total Return Deductions: -{formatMoney(activeOrder.returnAmount || returns.reduce((a, b) => a + b.total, 0))}
                     </span>
                   </div>
                   <table className="w-full text-left border-collapse text-xs">
@@ -575,7 +623,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                       </tr>
                     </thead>
                     <tbody className="divide-y divide-amber-100/60">
-                      {order.returns.map((ret) => (
+                      {returns.map((ret) => (
                         <tr key={ret.id}>
                           <td className="p-2 pl-3">
                             <span className={`px-2 py-0.5 rounded-md text-[9px] font-bold ${
@@ -609,40 +657,40 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <div className="w-full sm:w-64 space-y-1.5 text-xs">
                   <div className="flex justify-between text-slate-600">
                     <span>Subtotal:</span>
-                    <span className="font-medium text-slate-900 font-mono">{formatMoney(order.subtotal)}</span>
+                    <span className="font-medium text-slate-900 font-mono">{formatMoney(activeOrder.subtotal || 0)}</span>
                   </div>
-                  {order.items.some((i) => (i.freeQuantity || 0) > 0) && (
+                  {items.some((i) => (i.freeQuantity || 0) > 0) && (
                     <div className="flex justify-between text-emerald-700 font-medium">
                       <span>Promotional Units:</span>
                       <span className="font-mono">
-                        {order.items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0)} Free
+                        {items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0)} Free
                       </span>
                     </div>
                   )}
-                  {order.discountAmount > 0 && (
+                  {(activeOrder.discountAmount || 0) > 0 && (
                     <div className="flex justify-between text-emerald-600 font-medium">
                       <span>Discount:</span>
-                      <span className="font-mono">-{formatMoney(order.discountAmount)}</span>
+                      <span className="font-mono">-{formatMoney(activeOrder.discountAmount)}</span>
                     </div>
                   )}
-                  {order.returnAmount !== undefined && order.returnAmount > 0 && (
+                  {activeOrder.returnAmount !== undefined && activeOrder.returnAmount > 0 && (
                     <div className="flex justify-between text-rose-600 font-medium">
                       <span>Returns / Damages:</span>
-                      <span className="font-mono">-{formatMoney(order.returnAmount)}</span>
+                      <span className="font-mono">-{formatMoney(activeOrder.returnAmount)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-bold text-slate-900 border-t border-slate-200 pt-1.5">
                     <span>Net Total:</span>
-                    <span className="font-mono text-blue-600">{formatMoney(order.netTotal)}</span>
+                    <span className="font-mono text-blue-600">{formatMoney(activeOrder.netTotal || 0)}</span>
                   </div>
                   <div className="flex justify-between text-slate-600">
                     <span>Cash Paid:</span>
-                    <span className="font-mono font-bold text-emerald-600">{formatMoney(order.cashReceived || 0)}</span>
+                    <span className="font-mono font-bold text-emerald-600">{formatMoney(activeOrder.cashReceived || 0)}</span>
                   </div>
-                  {order.netTotal - (order.cashReceived || 0) > 0 && (
+                  {(activeOrder.netTotal || 0) - (activeOrder.cashReceived || 0) > 0 && (
                     <div className="flex justify-between text-rose-600 font-bold">
                       <span>Credit Balance:</span>
-                      <span className="font-mono">{formatMoney(order.netTotal - (order.cashReceived || 0))}</span>
+                      <span className="font-mono">{formatMoney((activeOrder.netTotal || 0) - (activeOrder.cashReceived || 0))}</span>
                     </div>
                   )}
                 </div>
@@ -660,7 +708,7 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <div>
                   <p className="font-semibold text-slate-600 mb-4">Delivered By:</p>
                   <div className="border-b border-dashed border-slate-300 w-40"></div>
-                  <p className="mt-1 text-[10px]">{order.lorry ? `${order.lorry.driverName} (${order.lorry.vehicleNumber})` : 'Warehouse Dispatch'}</p>
+                  <p className="mt-1 text-[10px]">{lorry ? `${lorry.driverName} (${lorry.vehicleNumber})` : 'Warehouse Dispatch'}</p>
                 </div>
                 <div className="text-right">
                   <p className="font-semibold text-slate-600 mb-4">Received By:</p>
