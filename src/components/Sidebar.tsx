@@ -120,15 +120,19 @@ export const Sidebar: React.FC<SidebarProps> = ({
         {/* App Title & Header */}
         <div className="p-5 pb-4 border-b border-slate-100 flex items-center justify-between">
           <div className="flex items-center gap-3.5">
-            <div className="w-10 h-10 rounded-2xl bg-gradient-to-br from-[#0071E3] via-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-sm shadow-blue-500/25 shrink-0">
-              <Truck className="w-5 h-5 stroke-[2.2]" />
+            <div className="w-11 h-11 rounded-2xl bg-white p-1 border-2 border-[#C59B27]/40 shadow-sm shadow-[#0C3B9B]/15 flex items-center justify-center shrink-0">
+              <img
+                src="/ms-logo.png"
+                alt="M&S Enterprises"
+                className="w-full h-full object-contain"
+              />
             </div>
             <div>
-              <h1 className="font-bold text-slate-900 text-base tracking-tight leading-snug">
-                Distributor Pro
+              <h1 className="font-extrabold text-slate-900 text-[15px] tracking-tight leading-snug">
+                M&amp;S Enterprises
               </h1>
-              <span className="text-xs font-medium text-slate-400 block -mt-0.5">
-                3-Lorry Fleet Edition
+              <span className="text-[11px] font-semibold text-amber-700/90 block -mt-0.5">
+                Distributor Console
               </span>
             </div>
           </div>
@@ -174,7 +178,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
                       key={item.id}
                       onClick={() => handleItemClick(item.id)}
                       className={`w-full flex items-center justify-between px-3.5 py-2.5 rounded-xl text-[13.5px] transition-all duration-150 text-left group ${isActive
-                          ? 'bg-[#0071E3] text-white shadow-sm shadow-blue-500/20 font-semibold'
+                          ? 'bg-gradient-to-r from-[#0C3B9B] to-[#0A3386] text-white shadow-sm shadow-[#0C3B9B]/25 font-semibold border-l-[3.5px] border-[#C59B27]'
                           : 'text-slate-600 hover:text-slate-900 hover:bg-slate-100/80 font-medium'
                         }`}
                     >
@@ -210,16 +214,16 @@ export const Sidebar: React.FC<SidebarProps> = ({
         <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl space-y-2 shadow-2xs">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
             <span className="flex items-center gap-1.5 text-[11px]">
-              <Coins className="w-3.5 h-3.5 text-blue-600" /> Currency
+              <Coins className="w-3.5 h-3.5 text-[#0C3B9B]" /> Currency
             </span>
-            <span className="text-[11px] font-bold text-[#0071E3] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100/80">
+            <span className="text-[11px] font-bold text-[#0C3B9B] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
               {CURRENCIES[currency].symbol}
             </span>
           </div>
           <select
             value={currency}
             onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0071E3]/20 focus:border-[#0071E3] shadow-2xs cursor-pointer transition-colors"
+            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0C3B9B]/20 focus:border-[#0C3B9B] shadow-2xs cursor-pointer transition-colors"
           >
             <option value="LKR">LKR (Rs. - Sri Lanka)</option>
             <option value="USD">USD ($ - US Dollar)</option>

@@ -7,9 +7,40 @@ export default {
   theme: {
     extend: {
       colors: {
+        ms: {
+          blue: '#0C3B9B',
+          'blue-hover': '#082C78',
+          'blue-dark': '#051C52',
+          'blue-light': '#EEF3FF',
+          gold: '#C59B27',
+          'gold-hover': '#A8811C',
+          'gold-dark': '#8A670F',
+          'gold-light': '#FDF8EA',
+          'gold-border': '#E4C76C',
+        },
+        brand: {
+          blue: '#0C3B9B',
+          'blue-hover': '#082C78',
+          gold: '#C59B27',
+          'gold-hover': '#A8811C',
+          'gold-light': '#FDF8EA',
+        },
+        gold: {
+          50: '#FDFBF5',
+          100: '#FDF8EA',
+          200: '#F7ECC8',
+          300: '#EED99E',
+          400: '#DEC06B',
+          500: '#C59B27',
+          600: '#A8811C',
+          700: '#8A670F',
+          800: '#6C4F0C',
+          900: '#4D3708',
+        },
         apple: {
-          blue: '#0071E3',
-          'blue-hover': '#0077ED',
+          blue: '#0C3B9B',
+          'blue-hover': '#082C78',
+          gold: '#C59B27',
           gray: '#F1F3F6',
           dark: '#1D1D1F',
           subtext: '#86868B',

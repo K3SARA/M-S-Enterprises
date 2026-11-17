@@ -106,12 +106,12 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
   addBytes(COMMANDS.ALIGN_CENTER);
   addBytes(COMMANDS.DOUBLE_SIZE);
   addBytes(COMMANDS.BOLD_ON);
-  addLine(settings?.companyName || 'Sunbakers & confectionary');
+  addLine(settings?.companyName || 'M&S Enterprises');
   addBytes(COMMANDS.NORMAL_SIZE);
   addBytes(COMMANDS.BOLD_OFF);
 
-  addLine(settings?.address || '239,kurukutthala ,kadugannawa');
-  addLine(`Tel: ${settings?.phone || '+94 77 254 9414'}`);
+  addLine(settings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda');
+  addLine(`Tel: ${settings?.phone || '0773669913 / 0707077551'}`);
   if (settings?.registrationNumber) {
     addLine(`Reg/VAT: ${settings.registrationNumber}`);
   }
@@ -310,12 +310,12 @@ export function build80mmEscPosBillsSummary(
   addBytes(COMMANDS.ALIGN_CENTER);
   addBytes(COMMANDS.DOUBLE_SIZE);
   addBytes(COMMANDS.BOLD_ON);
-  addLine(settings?.companyName || 'Sunbakers & confectionary');
+  addLine(settings?.companyName || 'M&S Enterprises');
   addBytes(COMMANDS.NORMAL_SIZE);
   addBytes(COMMANDS.BOLD_OFF);
 
-  addLine(settings?.address || '239,kurukutthala ,kadugannawa');
-  addLine(`Tel: ${settings?.phone || '+94 77 254 9414'}`);
+  addLine(settings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda');
+  addLine(`Tel: ${settings?.phone || '0773669913 / 0707077551'}`);
   if (settings?.registrationNumber) {
     addLine(`Reg/VAT: ${settings.registrationNumber}`);
   }

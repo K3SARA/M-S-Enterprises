@@ -108,17 +108,17 @@ export const AppContent: React.FC = () => {
               <Menu className="w-5 h-5" />
             </button>
             <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-xl bg-gradient-to-br from-blue-600 to-indigo-700 flex items-center justify-center text-white shadow-2xs">
-                <Truck className="w-4.5 h-4.5 stroke-[2.2]" />
+              <div className="w-8 h-8 rounded-xl bg-white p-0.5 border border-[#C59B27]/40 flex items-center justify-center shrink-0 shadow-2xs">
+                <img src="/ms-logo.png" alt="M&S Enterprises" className="w-full h-full object-contain" />
               </div>
               <span className="font-bold text-slate-900 text-base tracking-tight">
-                Distributor Pro
+                M&amp;S Enterprises
               </span>
             </div>
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-blue-700 border border-blue-200/60 font-mono">
+            <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-[#0C3B9B] border border-blue-200/60 font-mono">
               {CURRENCIES[currency]?.symbol || 'Rs.'}
             </span>
             <div className="w-2.5 h-2.5 rounded-full bg-emerald-500 animate-pulse" title="Fleet Active" />
@@ -228,7 +228,7 @@ export const AppContent: React.FC = () => {
                 onClick={() => handleBottomNavClick(item.id)}
                 className={`flex flex-col items-center justify-center py-1 px-2.5 rounded-xl transition-all duration-150 min-w-[56px] ${
                   isActive
-                    ? 'text-blue-600 font-bold'
+                    ? 'text-[#0C3B9B] font-bold'
                     : 'text-slate-500 hover:text-slate-900 font-medium'
                 }`}
               >

@@ -50,16 +50,16 @@ export const CustomerReceiptModal: React.FC<CustomerReceiptModalProps> = ({
           <div className="text-center pb-4 border-b border-dashed border-slate-200">
             <div className="flex justify-center mb-1.5">
               <img
-                src="/sun-bakers-logo.png"
-                alt="Sunbakers & confectionary"
-                className="w-14 h-14 object-contain rounded-full border border-slate-100 shadow-2xs"
+                src="/ms-logo.png"
+                alt="M&S Enterprises"
+                className="w-16 h-16 object-contain rounded-xl border border-slate-100 shadow-2xs"
               />
             </div>
             <h2 className="text-base font-black text-slate-900 uppercase tracking-tight">
-              Sunbakers & confectionary
+              M&S Enterprises
             </h2>
             <p className="text-[11px] text-slate-500 font-medium">
-              239,kurukutthala ,kadugannawa • Tel: +94 77 254 9414
+              115/1A1, Udumulla Road, Himbutana, Angoda • Tel: 0773669913 / 0707077551
             </p>
             <div className="mt-2 inline-block px-3 py-1 bg-emerald-50 text-emerald-700 font-mono font-bold text-xs rounded-full border border-emerald-200/60">
               Receipt: {payment.receiptNumber}

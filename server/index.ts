@@ -28,11 +28,11 @@ app.get('/api/health', (_req, res) => {
 const SETTINGS_FILE = path.join(__dirname, '../settings.json');
 
 const defaultSettings = {
-  companyName: 'Sunbakers & confectionary',
-  tagline: 'Fresh Bakery & Confectionary Distribution',
-  phone: '+94 77 254 9414',
-  email: 'sunbakers@gmail.com',
-  address: '239,kurukutthala ,kadugannawa',
+  companyName: 'M&S Enterprises',
+  tagline: 'Wholesale Distribution & Fleet Console',
+  phone: '0773669913 / 0707077551',
+  email: 'msenterprises@gmail.com',
+  address: '115/1A1, Udumulla Road, Himbutana, Angoda',
   registrationNumber: '',
   invoiceFooterNote: 'Goods received in fresh & satisfactory condition. Thank you for your business!',
   defaultCurrency: 'LKR',
@@ -1123,7 +1123,7 @@ app.get('/api/backup/export', async (_req: Request, res: Response) => {
 
     const backupPayload = {
       version: '1.0.0',
-      system: 'Distributor Pro Enterprise',
+      system: 'M&S Enterprises Management System',
       exportedAt: new Date().toISOString(),
       counts: {
         users: users.length,
@@ -2737,8 +2737,8 @@ app.get('/api/routes/:id/optimized', async (req: Request, res: Response) => {
       return res.status(404).json({ error: 'Route not found.' });
     }
 
-    // Default depot Kadugannawa Sunbakers
-    const DEPOT_COORDS = { lat: 7.2558, lng: 80.5284, name: 'Sunbakers Kadugannawa Depot' };
+    // Default depot Himbutana, Angoda M&S Enterprises
+    const DEPOT_COORDS = { lat: 6.9271, lng: 79.9298, name: 'M&S Enterprises Angoda Depot' };
 
     let startLat = DEPOT_COORDS.lat;
     let startLng = DEPOT_COORDS.lng;
@@ -9321,7 +9321,7 @@ async function seedIfEmpty() {
             callingName: 'Priyantha',
             nicNumber: '199218507890',
             phone: '+94 78 234 5678',
-            address: '239, Kurukutthala, Kadugannawa',
+            address: '115/1A1, Udumulla Road, Himbutana, Angoda',
             designation: 'Central Warehouse Storekeeper',
             department: 'WAREHOUSE',
             employmentType: 'FULL_TIME',
@@ -9331,7 +9331,7 @@ async function seedIfEmpty() {
             allowances: 4000.0,
             commissionRate: 0.0,
             bankName: 'Hatton National Bank',
-            branchName: 'Kadugannawa',
+            branchName: 'Angoda',
             accountNumber: '1098765432',
             epfNumber: 'EPF-92185',
             notes: 'Morning lorry dispatch and warehouse inventory keeper'

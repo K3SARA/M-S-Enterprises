@@ -28,8 +28,8 @@ import { MapService, CustomerService, RouteService } from '../services/api';
 import { MapFleetData, MapFleetLorry, MapFleetCustomer, Route as RouteType, LorryLocationHistory, RouteOptimizationResult } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
 
-// Default map center (Sri Lanka - Kandy/Kadugannawa region where Sunbakers is located)
-const DEFAULT_CENTER: [number, number] = [7.2558, 80.5284];
+// Default map center (Sri Lanka - Himbutana, Angoda region where M&S Enterprises is located)
+const DEFAULT_CENTER: [number, number] = [6.9271, 79.9298];
 const DEFAULT_ZOOM = 12;
 
 interface MapViewProps {

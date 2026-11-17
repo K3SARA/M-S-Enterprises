@@ -319,20 +319,20 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
             <div className="text-center space-y-1 pb-2">
               <div className="flex justify-center mb-1">
                 <img
-                  src="/sun-bakers-logo.png"
-                  alt="Sunbakers & confectionary"
-                  className="w-16 h-16 object-contain mx-auto rounded-full border border-slate-200/60 shadow-2xs print:border-none"
+                  src="/ms-logo.png"
+                  alt="M&S Enterprises"
+                  className="w-16 h-16 object-contain mx-auto rounded-xl border border-slate-200/60 shadow-2xs print:border-none"
                 />
               </div>
 
               <h2 className="text-sm sm:text-base font-black tracking-wider uppercase text-black leading-tight">
-                {companySettings?.companyName || 'Sunbakers & confectionary'}
+                {companySettings?.companyName || 'M&S Enterprises'}
               </h2>
               <p className="text-[10px] text-black font-medium leading-tight">
-                {companySettings?.address || '239,kurukutthala ,kadugannawa'}
+                {companySettings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda'}
               </p>
               <p className="text-[10px] text-black font-bold">
-                Tel: {companySettings?.phone || '+94 77 254 9414'}
+                Tel: {companySettings?.phone || '0773669913 / 0707077551'}
               </p>
               {companySettings?.registrationNumber && (
                 <p className="text-[9px] text-black">

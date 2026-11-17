@@ -197,24 +197,24 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
             <div className="receipt-80mm max-w-[320px] w-full mx-auto bg-white p-3.5 sm:p-4 shadow-sm border border-slate-200 rounded-xl text-black font-mono text-[11px] leading-tight select-text">
               {/* Receipt Logo & Header */}
               <div className="text-center space-y-1 pb-2">
-                {/* Sunbakers & Confectionary Logo */}
+                {/* M&S Enterprises Logo */}
                 <div className="flex justify-center mb-1.5">
                   <img
-                    src="/sun-bakers-logo.png"
-                    alt="Sunbakers & confectionary"
-                    className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto rounded-full border border-slate-200/60 shadow-2xs print:border-none"
+                    src="/ms-logo.png"
+                    alt="M&S Enterprises"
+                    className="w-16 h-16 sm:w-20 sm:h-20 object-contain mx-auto rounded-xl border border-slate-200/60 shadow-2xs print:border-none"
                   />
                 </div>
 
                 <h2 className="text-sm sm:text-base font-black tracking-wider uppercase text-black leading-tight">
-                  {companySettings?.companyName || 'Sunbakers & confectionary'}
+                  {companySettings?.companyName || 'M&S Enterprises'}
                 </h2>
                 
                 <p className="text-[10px] sm:text-[10.5px] text-black font-medium leading-tight">
-                  {companySettings?.address || '239,kurukutthala ,kadugannawa'}
+                  {companySettings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda'}
                 </p>
                 <p className="text-[10px] sm:text-[10.5px] text-black font-bold">
-                  Tel: {companySettings?.phone || '+94 77 254 9414'}
+                  Tel: {companySettings?.phone || '0773669913 / 0707077551'}
                 </p>
                 {companySettings?.registrationNumber && (
                   <p className="text-[9px] text-black">Reg/VAT: {companySettings.registrationNumber}</p>
@@ -452,19 +452,19 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 <div className="text-left sm:text-right space-y-2">
                   <div className="flex items-center gap-3 sm:justify-end">
                     <img
-                      src="/sun-bakers-logo.png"
-                      alt="Sunbakers & confectionary"
-                      className="w-12 h-12 object-contain rounded-full border border-slate-100 shadow-2xs shrink-0"
+                      src="/ms-logo.png"
+                      alt="M&S Enterprises"
+                      className="w-12 h-12 object-contain rounded-xl border border-slate-100 shadow-2xs shrink-0"
                     />
                     <div>
                       <h3 className="font-bold text-sm text-slate-900">
-                        {companySettings?.companyName || 'Sunbakers & confectionary'}
+                        {companySettings?.companyName || 'M&S Enterprises'}
                       </h3>
                       <p className="text-xs text-slate-500">
-                        {companySettings?.address || '239,kurukutthala ,kadugannawa'}
+                        {companySettings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda'}
                       </p>
                       <p className="text-xs text-slate-500 font-mono">
-                        Tel: {companySettings?.phone || '+94 77 254 9414'}
+                        Tel: {companySettings?.phone || '0773669913 / 0707077551'}
                       </p>
                     </div>
                   </div>

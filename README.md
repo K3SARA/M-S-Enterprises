@@ -1,6 +1,6 @@
-# Distributor Pro — Offline Distribution Management Desktop Application
+# M&S Enterprises — Offline Distribution Management Desktop Application
 
-A high-performance, offline-first Desktop Application engineered for warehouse and distributor operations. Built with an **ultra-minimal, high-contrast, Apple-inspired interface** tailored specifically for non-technical staff.
+A high-performance, offline-first Desktop Application engineered for **M&S Enterprises** (115/1A1, Udumulla Road, Himbutana, Angoda). Built with an **ultra-minimal, high-contrast interface** featuring M&S signature Royal Blue and Gold branding.
 
 ---
 

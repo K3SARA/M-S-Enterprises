@@ -31,12 +31,12 @@ export const Settings: React.FC = () => {
   const [lorries, setLorries] = useState<Lorry[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [settings, setSettings] = useState<SystemSettings>({
-    companyName: 'Distributor Pro Lanka (Pvt) Ltd',
-    tagline: 'Authorized Wholesale FMCG Distribution & Fleet Console',
-    phone: '+94 11 234 5678 / +94 77 123 4567',
-    email: 'distribution@example.com',
-    address: 'No. 88, Commercial Zone, Colombo, Sri Lanka',
-    registrationNumber: 'PV-84920/2022',
+    companyName: 'M&S Enterprises',
+    tagline: 'Wholesale Distribution & Fleet Console',
+    phone: '0773669913 / 0707077551',
+    email: 'msenterprises@gmail.com',
+    address: '115/1A1, Udumulla Road, Himbutana, Angoda',
+    registrationNumber: '',
     invoiceFooterNote: 'Goods once delivered and acknowledged on paper slip cannot be returned without formal warehouse return authorization.',
     defaultCurrency: 'LKR',
     defaultCreditLimit: 50000,

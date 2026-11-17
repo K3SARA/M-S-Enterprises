@@ -55,39 +55,45 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
     <div
       className="min-h-screen w-screen flex flex-col justify-center items-center relative overflow-hidden select-none bg-cover bg-center bg-no-repeat p-4"
       style={{
-        backgroundImage: `url('/login-bg.jpg')`,
-        backgroundColor: '#8681b4'
+        backgroundImage: `linear-gradient(rgba(7, 27, 72, 0.85), rgba(4, 18, 48, 0.9)), url('/login-bg.jpg')`,
+        backgroundColor: '#0C3B9B'
       }}
     >
-      {/* Top Left Brand Logo (J&co. SOFTWARE SOLUTIONS) */}
-      <div className="absolute top-6 left-6 sm:top-10 sm:left-12 z-20">
+      {/* Top Left Brand Badge */}
+      <div className="absolute top-6 left-6 sm:top-8 sm:left-10 z-20 flex items-center gap-3 bg-white/10 backdrop-blur-md px-3.5 py-2 rounded-2xl border border-white/15">
         <img
-          src="/jco-logo.png"
-          alt="J&co. Software Solutions"
-          className="h-9 sm:h-12 w-auto object-contain drop-shadow-xs select-none"
+          src="/ms-logo.png"
+          alt="M&S Enterprises"
+          className="h-8 sm:h-9 w-auto object-contain rounded-lg drop-shadow-xs select-none"
         />
+        <div className="hidden sm:block">
+          <span className="text-white font-bold text-xs tracking-tight block">M&S Enterprises</span>
+          <span className="text-amber-300 text-[10px] font-medium block">Himbutana, Angoda</span>
+        </div>
       </div>
 
-      {/* Hyper-Minimal White Container (Ref: White Box Login) */}
-      <div className="w-full max-w-[390px] sm:max-w-[420px] bg-white rounded-md shadow-2xl p-7 sm:p-10 relative z-10">
-        {/* Samantha Distributor Circular Emblem */}
+      {/* Hyper-Minimal Container (Blue & Gold Accents) */}
+      <div className="w-full max-w-[390px] sm:max-w-[420px] bg-white rounded-2xl shadow-2xl p-7 sm:p-10 relative z-10 border-t-4 border-[#C59B27]">
+        {/* M&S Enterprises Circular Emblem */}
         <div className="flex justify-center mb-3">
-          <img
-            src="/samantha-logo.png"
-            alt="Samantha Distributor"
-            className="w-20 h-20 sm:w-22 sm:h-22 object-contain drop-shadow-md select-none transition-transform hover:scale-105 duration-300"
-          />
+          <div className="p-2 rounded-2xl bg-white shadow-md border border-amber-200/60">
+            <img
+              src="/ms-logo.png"
+              alt="M&S Enterprises"
+              className="w-20 h-20 sm:w-24 sm:h-24 object-contain select-none transition-transform hover:scale-105 duration-300"
+            />
+          </div>
         </div>
 
-        <h1 className="text-2xl sm:text-[26px] font-bold tracking-tight text-slate-900 text-center mb-1">
-          Log in
+        <h1 className="text-2xl sm:text-[26px] font-black tracking-tight text-slate-900 text-center mb-1">
+          M&amp;S Enterprises
         </h1>
-        <p className="text-[11px] text-slate-400 text-center mb-6 font-medium tracking-wide">
-          Samantha Distributor &bull; Fast Reliable Delivery
+        <p className="text-[11.5px] text-amber-700 font-semibold text-center mb-5 tracking-wide">
+          Wholesale Distribution &bull; Himbutana, Angoda
         </p>
 
         {/* Portal Quick Selector Tabs */}
-        <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-lg mb-5 text-[11px] font-semibold text-slate-600">
+        <div className="grid grid-cols-3 gap-1 p-1 bg-slate-100 rounded-xl mb-5 text-[11px] font-semibold text-slate-600">
           <button
             type="button"
             onClick={() => {
@@ -200,16 +206,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             <button
               type="submit"
               disabled={loading}
-              className="min-w-[125px] bg-black hover:bg-neutral-800 text-white font-medium text-xs tracking-wide py-2.5 px-8 rounded-xs transition disabled:opacity-50 cursor-pointer shadow-xs active:scale-[0.98]"
+              className="w-full bg-[#0C3B9B] hover:bg-[#082C78] text-white font-bold text-xs tracking-wide py-2.5 px-8 rounded-xl transition disabled:opacity-50 cursor-pointer shadow-md shadow-[#0C3B9B]/25 border border-[#C59B27]/40 hover:border-[#C59B27] active:scale-[0.98]"
             >
-              {loading ? 'Authenticating...' : 'Log in'}
+              {loading ? 'Authenticating...' : 'Log in to M&S Console'}
             </button>
           </div>
 
           {/* Subtext */}
           <div className="text-center pt-1">
             <span className="text-[11px] text-slate-400 hover:text-slate-600 transition cursor-default">
-              Offline Distributor Management
+              M&amp;S Enterprises Management Console
             </span>
           </div>
 
@@ -222,7 +228,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   setUsername('supplier');
                   setPassword('supplier123');
                 }}
-                className="px-2.5 py-1 text-[11px] rounded bg-blue-50 hover:bg-blue-100 text-blue-700 font-bold transition cursor-pointer"
+                className="px-2.5 py-1 text-[11px] rounded bg-blue-50 hover:bg-blue-100 text-[#0C3B9B] font-bold transition cursor-pointer"
               >
                 Supplier (supplier / supplier123)
               </button>
@@ -232,7 +238,7 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
                   setUsername('admin');
                   setPassword('admin123');
                 }}
-                className="px-2.5 py-1 text-[11px] rounded bg-slate-100 hover:bg-slate-200 text-slate-700 font-medium transition cursor-pointer"
+                className="px-2.5 py-1 text-[11px] rounded bg-amber-50 hover:bg-amber-100 text-amber-800 font-bold transition cursor-pointer"
               >
                 Admin (admin / admin123)
               </button>
@@ -251,9 +257,9 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
         </form>
       </div>
 
-      {/* Subtle bottom info */}
-      <div className="absolute bottom-4 text-center text-[11px] text-slate-500 font-mono z-10">
-        Samantha Distribution &bull; Powered by J&co. Software Solutions
+      {/* Business Details in bottom bar */}
+      <div className="absolute bottom-4 text-center text-[11px] text-slate-300 font-mono z-10 px-4">
+        M&amp;S Enterprises &bull; 115/1A1, Udumulla Road, Himbutana, Angoda &bull; Tel: 0773669913 / 0707077551
       </div>
     </div>
   );

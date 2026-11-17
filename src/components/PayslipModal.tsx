@@ -101,7 +101,7 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({ payroll, onClose }) 
             <div className="max-w-[320px] mx-auto font-mono text-[11px] leading-relaxed text-slate-800 border border-dashed border-slate-300 p-4 rounded-xl print:border-none print:p-0">
               <div className="text-center pb-3 border-b border-dashed border-slate-300">
                 <h3 className="font-bold text-sm tracking-tight text-slate-900">
-                  {settings?.companyName || 'DISTRIBUTOR PRO'}
+                  {settings?.companyName || 'M&S ENTERPRISES'}
                 </h3>
                 <p className="text-[10px] text-slate-500">{settings?.phone}</p>
                 <div className="my-1.5 font-bold uppercase tracking-wider text-[11px]">
@@ -233,7 +233,7 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({ payroll, onClose }) 
               <div className="flex justify-between items-start border-b border-slate-200 pb-4">
                 <div>
                   <h1 className="text-xl font-bold tracking-tight text-slate-900">
-                    {settings?.companyName || 'DISTRIBUTOR PRO FLEET'}
+                    {settings?.companyName || 'M&S ENTERPRISES FLEET'}
                   </h1>
                   <p className="text-xs text-slate-500">{settings?.address || 'Distribution Center'}</p>
                   <p className="text-xs text-slate-500">Tel: {settings?.phone || '077 123 4567'}</p>

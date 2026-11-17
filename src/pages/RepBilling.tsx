@@ -1537,7 +1537,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         </div>
 
                         <div className="flex items-center gap-2 text-[11px] text-slate-500 truncate mt-0.5">
-                          <span>{customer.deliveryAddress || customer.city || customer.phone || 'Kadugannawa'}</span>
+                          <span>{customer.deliveryAddress || customer.city || customer.phone || 'Angoda'}</span>
                           {stop.distanceFromCurrentKm < 900 && (
                             <>
                               <span>•</span>
@@ -3087,7 +3087,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         </span>
                       </div>
                       <p className="text-[11px] text-slate-500 truncate mt-0.5">
-                        {cust.deliveryAddress || cust.city || cust.phone || 'Kadugannawa'}
+                        {cust.deliveryAddress || cust.city || cust.phone || 'Angoda'}
                       </p>
                     </div>
 

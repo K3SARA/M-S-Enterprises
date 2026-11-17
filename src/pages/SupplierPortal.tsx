@@ -200,7 +200,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
               </span>
             </div>
             <p className="text-[11px] text-slate-400 font-medium">
-              Supplying to Samantha Distributor Agency &bull; {data?.supplier?.city || 'Sri Lanka'}
+              Supplying to M&S Enterprises &bull; {data?.supplier?.city || 'Sri Lanka'}
             </p>
           </div>
         </div>
@@ -443,7 +443,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
                 <div className="space-y-3 text-xs">
                   <div>
                     <span className="text-slate-400 font-medium block text-[10px] uppercase">Agency Name</span>
-                    <span className="font-bold text-slate-900 text-sm">Samantha Distributor (Pvt) Ltd</span>
+                    <span className="font-bold text-slate-900 text-sm">M&S Enterprises</span>
                   </div>
                   <div className="grid grid-cols-2 gap-2">
                     <div>
@@ -600,7 +600,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
             <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Supplier Master Catalog & Stock Levels</h2>
-                <p className="text-xs text-slate-500">Products supplied to Samantha Distributor Agency</p>
+                <p className="text-xs text-slate-500">Products supplied to M&S Enterprises</p>
               </div>
               <div className="flex items-center gap-2">
                 <button
@@ -690,7 +690,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
             <div className="p-4 rounded-2xl bg-white border border-slate-200/90 shadow-xs flex items-center justify-between">
               <div>
                 <h2 className="text-sm font-bold text-slate-900">Supply Shipments & Dispatches (GRN)</h2>
-                <p className="text-xs text-slate-500">History of goods delivered to Samantha Distributor Warehouse</p>
+                <p className="text-xs text-slate-500">History of goods delivered to M&S Enterprises Warehouse</p>
               </div>
               <button
                 type="button"
@@ -761,7 +761,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
                 </div>
                 <div>
                   <h3 className="text-sm font-bold text-slate-900">Dispatch Stock to Distributor</h3>
-                  <p className="text-[11px] text-slate-500">Adds stock directly to Samantha Distributor Central Warehouse</p>
+                  <p className="text-[11px] text-slate-500">Adds stock directly to M&S Enterprises Central Warehouse</p>
                 </div>
               </div>
               <button
@@ -790,7 +790,7 @@ export const SupplierPortal: React.FC<SupplierPortalProps> = ({ user, onLogout }
                   <label className="text-[11px] font-bold text-slate-600 block mb-1">Distributor Agency</label>
                   <input
                     type="text"
-                    value="Samantha Distributor Agency"
+                    value="M&S Enterprises"
                     disabled
                     className="w-full px-3 py-2 rounded-xl bg-slate-100 border border-slate-200 text-xs font-semibold text-slate-600"
                   />
