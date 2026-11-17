@@ -144,9 +144,13 @@ export const CustomerReceiptModal: React.FC<CustomerReceiptModalProps> = ({
           </div>
 
           {/* Footer acknowledgement */}
-          <div className="pt-4 text-center text-[10px] text-slate-400 border-t border-dashed border-slate-200">
+          <div className="pt-4 text-center text-[10px] text-slate-400 border-t border-dashed border-slate-200 space-y-1">
             <p>Thank you for your business & prompt settlement.</p>
-            <p className="font-mono mt-0.5">Authorized System Generated Voucher</p>
+            <p className="font-mono text-[9px]">Authorized System Generated Voucher</p>
+            <div className="pt-2 text-[9px] text-slate-500 font-mono">
+              <p className="font-semibold">Powered By J&amp;co. Software Solution</p>
+              <p>+94 77 065 4279</p>
+            </div>
           </div>
         </div>
 

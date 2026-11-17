@@ -238,7 +238,13 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
   addLine(padTwoColumns('____________________', '____________________'));
   addLine(padTwoColumns(order.lorry?.driverName || 'Driver Sign', 'Customer Stamp / Sign'));
 
-  // 10. Feed and Cut
+  // 10. Software Provider Branding
+  addBytes(COMMANDS.ALIGN_CENTER);
+  addLine('');
+  addLine('Powered By J&co. Software Solution');
+  addLine('+94 77 065 4279');
+
+  // 11. Feed and Cut
   addLine('');
   addLine(dividerLine('.'));
   addBytes(COMMANDS.PAPER_FEED_5);
@@ -440,6 +446,9 @@ export function build80mmEscPosBillsSummary(
   addBytes(COMMANDS.ALIGN_CENTER);
   addLine('*** END OF ROUTE SUMMARY ***');
   addLine('Generated from Sales Rep Billing App');
+  addLine('');
+  addLine('Powered By J&co. Software Solution');
+  addLine('+94 77 065 4279');
   addLine(dividerLine('.'));
 
   // 9. Feed and Cut

@@ -536,6 +536,16 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
                 <p>Goods and cash accounted for settlement.</p>
                 <p>Keep for accounting and stock reconciliation.</p>
               </div>
+
+              {/* Powered By Footer */}
+              <div className="pt-2 border-t border-black border-dashed text-center space-y-0.5 select-none text-black">
+                <p className="text-[9px] font-semibold tracking-wide">
+                  Powered By J&amp;co. Software Solution
+                </p>
+                <p className="text-[8.5px] font-mono font-medium">
+                  +94 77 065 4279
+                </p>
+              </div>
             </div>
 
             {/* Bottom Thermal Margin */}

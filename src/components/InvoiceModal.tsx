@@ -455,8 +455,18 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 </div>
               </div>
 
+              {/* Powered By Footer */}
+              <div className="mt-3 pt-2 border-t border-black border-dashed text-center space-y-0.5 select-none text-black">
+                <p className="text-[9px] font-semibold tracking-wide">
+                  Powered By J&amp;co. Software Solution
+                </p>
+                <p className="text-[8.5px] font-mono font-medium">
+                  +94 77 065 4279
+                </p>
+              </div>
+
               {/* Bottom Thermal Paper Margin */}
-              <div className="pt-4 text-center text-[8px] text-slate-400 print:text-black">
+              <div className="pt-3 text-center text-[8px] text-slate-400 print:text-black">
                 - - - - - - - - - - - - - - - - - -
               </div>
             </div>
@@ -715,6 +725,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   <div className="border-b border-dashed border-slate-300 w-40 ml-auto"></div>
                   <p className="mt-1 text-[10px]">Authorized Shop Stamp & Sign</p>
                 </div>
+              </div>
+
+              {/* Powered By Footer */}
+              <div className="pt-3 border-t border-slate-200 flex flex-col sm:flex-row items-center justify-between text-[11px] text-slate-500 font-mono">
+                <span className="font-semibold">Powered By J&amp;co. Software Solution</span>
+                <span>+94 77 065 4279</span>
               </div>
             </div>
           )}
