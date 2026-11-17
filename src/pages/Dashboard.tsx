@@ -244,7 +244,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
       {/* Sales Reps Live Route & Target Performance */}
       {stats && stats.repLiveStatus && stats.repLiveStatus.length > 0 && (
-        <div className="bg-white border border-slate-200/80 rounded-3xl p-5 sm:p-6 shadow-2xs space-y-4">
+        <div className="bg-white border border-slate-300 rounded-3xl p-5 sm:p-6 shadow-2xs space-y-4">
           <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 border-b border-slate-100 pb-3">
             <div>
               <div className="flex items-center gap-2">
@@ -266,7 +266,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
             {stats.repLiveStatus.map((rep) => {
               const isMet = rep.dailyAchievementPercentage >= 100;
               return (
-                <div key={rep.id} className="p-4 rounded-2xl border border-slate-200/80 bg-white hover:border-blue-200 transition space-y-3.5 shadow-3xs">
+                <div key={rep.id} className="p-4 rounded-2xl border border-slate-300 hover:border-slate-400 bg-white transition space-y-3.5 shadow-xs">
                   <div className="flex items-start justify-between">
                     <div>
                       <div className="flex items-center gap-2">
@@ -309,7 +309,7 @@ export const Dashboard: React.FC<DashboardProps> = ({
                   </div>
 
                   {/* Metric Chips */}
-                  <div className="p-2.5 bg-slate-50 rounded-xl grid grid-cols-2 gap-2 text-xs">
+                  <div className="p-2.5 bg-slate-50/80 rounded-xl grid grid-cols-2 gap-2 text-xs border border-slate-200">
                     <div>
                       <span className="text-[10px] font-bold text-slate-400 uppercase tracking-wider block">Today Bills</span>
                       <span className="font-mono font-bold text-slate-800">{rep.todayBillsCount} bills</span>
