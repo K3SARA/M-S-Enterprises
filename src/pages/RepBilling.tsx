@@ -40,7 +40,8 @@ import {
   Barcode,
   MoreHorizontal,
   ChevronRight,
-  Radio
+  Radio,
+  Wallet
 } from 'lucide-react';
 import {
   Customer,
@@ -48,6 +49,7 @@ import {
   Lorry,
   Order,
   User,
+  CustomerPayment,
   RepTargetProgress,
   RouteOptimizationResult,
   OptimizedStop,
@@ -60,6 +62,9 @@ import { RepBillsSummaryModal } from '../components/RepBillsSummaryModal';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { CreditRiskBadge, CustomerAgingCard } from '../components/CreditRiskBadge';
 import { AdminPasscodeModal } from '../components/AdminPasscodeModal';
+import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
+import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal';
+import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 
 interface CartItem {
   productId: string;
@@ -141,6 +146,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   // Add Customer Modal State
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
 
+  // Direct Collection & Direct Returns Modal States (Ultra-clean Mobile Options)
+  const [showDirectCollectionModal, setShowDirectCollectionModal] = useState<boolean>(false);
+  const [showDirectReturnsModal, setShowDirectReturnsModal] = useState<boolean>(false);
+  const [activeReceiptPayment, setActiveReceiptPayment] = useState<CustomerPayment | null>(null);
+
   // Finished Bills State & Filters
   type BillsDatePreset = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'all' | 'custom';
   const [finishedBills, setFinishedBills] = useState<Order[]>([]);
@@ -171,6 +181,25 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [routeStatus, setRouteStatus] = useState<RouteStatusResult | null>(null);
   const [showSkippedModal, setShowSkippedModal] = useState<boolean>(false);
   const [autoCheckinToast, setAutoCheckinToast] = useState<string | null>(null);
+
+  // Next Stop Hero Card Minimized State (toggled via ••• button next to Next Stop badge)
+  const [isNextStopMinimized, setIsNextStopMinimized] = useState<boolean>(() => {
+    try {
+      return localStorage.getItem('rep_next_stop_minimized') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const toggleNextStopMinimized = () => {
+    setIsNextStopMinimized(prev => {
+      const next = !prev;
+      try {
+        localStorage.setItem('rep_next_stop_minimized', String(next));
+      } catch {}
+      return next;
+    });
+  };
 
   // Live GPS Beacon State (Broadcast driver location to office fleet map)
   // STRICT: Only mobile sales reps on route (role === 'REP') are allowed to broadcast vehicle GPS!
@@ -1223,6 +1252,32 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         {/* ======================================================== */}
         {currentStep === 1 && (
           <div className="space-y-3">
+            {/* Ultra-neat Quick Mobile Action Pills: Direct Outstanding Collection & Direct Returns Collection */}
+            <div className="grid grid-cols-2 gap-2">
+              <button
+                type="button"
+                onClick={() => setShowDirectCollectionModal(true)}
+                className="py-2.5 px-3 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-300 hover:bg-emerald-50/30 text-slate-800 text-xs font-bold flex items-center justify-center gap-2 transition shadow-2xs active:scale-[0.98] cursor-pointer"
+                title="Direct Outstanding Collection without a sales bill"
+              >
+                <div className="w-5 h-5 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
+                  <Wallet className="w-3 h-3 stroke-[2.5]" />
+                </div>
+                <span className="truncate">Collect Due</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowDirectReturnsModal(true)}
+                className="py-2.5 px-3 rounded-2xl bg-white border border-slate-200/90 hover:border-amber-300 hover:bg-amber-50/30 text-slate-800 text-xs font-bold flex items-center justify-center gap-2 transition shadow-2xs active:scale-[0.98] cursor-pointer"
+                title="Direct Returns Collection without a sales bill"
+              >
+                <div className="w-5 h-5 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
+                  <RotateCcw className="w-3 h-3 stroke-[2.5]" />
+                </div>
+                <span className="truncate">Collect Returns</span>
+              </button>
+            </div>
             {/* Rep Sales Target Goal Widget */}
             {user?.monthlyTarget && user.monthlyTarget > 0 ? (
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-2.5 flex items-center justify-between text-xs shadow-2xs">
@@ -1265,84 +1320,159 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
             {/* AI TSP Next Recommended Stop Hero Card */}
             {routeOptimization?.nextStop && !customerSearch && (
-              <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 text-white rounded-2xl p-4 shadow-md border border-blue-400/30 relative overflow-hidden">
-                <div className="absolute -right-8 -bottom-8 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+              isNextStopMinimized ? (
+                /* MINIMIZED SLIM NEXT STOP PILL */
+                <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-slate-900 text-white rounded-2xl p-2.5 px-3.5 shadow-md border border-blue-400/30 flex items-center justify-between gap-2.5 transition-all duration-200">
+                  <div className="flex items-center gap-2 min-w-0 flex-1">
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1 px-2 py-0.5 rounded-full bg-white/20 backdrop-blur-md text-[9.5px] font-bold tracking-wider uppercase border border-white/20">
+                        <Sparkles className="w-2.5 h-2.5 text-amber-300" />
+                        <span>Next #{routeOptimization.nextStop.sequence}</span>
+                      </div>
 
-                {/* Header Badge */}
-                <div className="flex items-center justify-between gap-2 mb-2.5">
-                  <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-bold tracking-wider uppercase border border-white/20">
-                    <Sparkles className="w-3 h-3 text-amber-300" />
-                    <span>Next Stop • #{routeOptimization.nextStop.sequence}</span>
-                  </div>
-
-                  <div className="flex items-center gap-1.5 text-[11px] font-bold bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
-                    <Clock className="w-3 h-3 text-blue-200" />
-                    <span>~{routeOptimization.nextStop.estimatedDriveTimeMinutes}m</span>
-                    <span className="text-white/60">•</span>
-                    <span>{routeOptimization.nextStop.distanceFromPrevKm} km</span>
-                  </div>
-                </div>
-
-                {/* Store Name & Location */}
-                <div className="mb-3">
-                  <h3 className="text-base font-bold text-white tracking-tight leading-snug">
-                    {routeOptimization.nextStop.customer.name}
-                  </h3>
-                  <p className="text-xs text-blue-100/90 font-medium truncate mt-0.5 flex items-center gap-1">
-                    <MapPin className="w-3.5 h-3.5 text-blue-300 shrink-0" />
-                    <span>{routeOptimization.nextStop.customer.deliveryAddress || routeOptimization.nextStop.customer.city || 'On delivery route'}</span>
-                    {routeOptimization.nextStop.customer.phone && (
-                      <>
-                        <span className="text-blue-300">•</span>
-                        <span>{routeOptimization.nextStop.customer.phone}</span>
-                      </>
-                    )}
-                  </p>
-                </div>
-
-                {/* Geofence Status Badge */}
-                <div className="mb-3">
-                  {routeOptimization.nextStop.isWithinGeofence ? (
-                    <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 text-xs font-bold animate-pulse">
-                      <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
-                      <span>📍 Within 50m Geofence (Verified Stop)</span>
+                      {/* Three Dots Button to Expand */}
+                      <button
+                        type="button"
+                        onClick={toggleNextStopMinimized}
+                        className="w-5 h-5 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center transition border border-white/20 shadow-2xs cursor-pointer shrink-0"
+                        title="Expand Next Stop details"
+                        aria-label="Expand Next Stop card"
+                      >
+                        <MoreHorizontal className="w-3 h-3" />
+                      </button>
                     </div>
-                  ) : (
-                    <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-blue-100 text-[11px] font-medium">
-                      <Compass className="w-3 h-3 text-blue-300" />
-                      <span>
-                        {routeOptimization.nextStop.distanceFromCurrentKm < 900
-                          ? `${Math.round(routeOptimization.nextStop.distanceFromCurrentKm * 1000)}m away from lorry`
-                          : 'En route on assigned delivery track'}
+
+                    <div className="min-w-0 truncate">
+                      <span className="font-bold text-xs text-white truncate mr-1.5">
+                        {routeOptimization.nextStop.customer.name}
+                      </span>
+                      <span className="text-[10px] text-blue-200 font-mono">
+                        (~{routeOptimization.nextStop.estimatedDriveTimeMinutes}m • {routeOptimization.nextStop.distanceFromPrevKm}km)
                       </span>
                     </div>
-                  )}
-                </div>
+                  </div>
 
-                {/* Turn-by-Turn & Quick Bill Action Buttons */}
-                <div className="grid grid-cols-2 gap-2 pt-0.5">
-                  <button
-                    type="button"
-                    onClick={e => handleNavigateToCustomer(routeOptimization.nextStop!.customer, e)}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 active:scale-95 font-bold text-xs shadow-sm transition cursor-pointer"
-                  >
-                    <Navigation className="w-3.5 h-3.5 text-blue-600 fill-blue-600" />
-                    <span>Navigate (Maps)</span>
-                  </button>
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {routeOptimization.nextStop.customer.latitude != null && (
+                      <button
+                        type="button"
+                        onClick={e => handleNavigateToCustomer(routeOptimization.nextStop!.customer, e)}
+                        className="p-1.5 rounded-lg bg-white/20 hover:bg-white/30 text-white transition cursor-pointer"
+                        title="Navigate in Google Maps"
+                      >
+                        <Navigation className="w-3 h-3 fill-white" />
+                      </button>
+                    )}
 
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setSelectedCustomerId(routeOptimization.nextStop!.customer.id);
-                      setCurrentStep(2);
-                    }}
-                    className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white active:scale-95 font-bold text-xs shadow-sm transition cursor-pointer"
-                  >
-                    <Receipt className="w-3.5 h-3.5" />
-                    <span>Start Bill</span>
-                  </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerId(routeOptimization.nextStop!.customer.id);
+                        setCurrentStep(2);
+                      }}
+                      className="py-1 px-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 active:scale-95 text-white font-bold text-xs transition flex items-center gap-1 shadow-2xs cursor-pointer"
+                    >
+                      <Receipt className="w-3 h-3" />
+                      <span>Start</span>
+                    </button>
+                  </div>
                 </div>
-              </div>
+              ) : (
+                /* FULL EXPANDED HERO CARD */
+                <div className="bg-gradient-to-br from-blue-600 via-indigo-600 to-slate-900 text-white rounded-2xl p-4 shadow-md border border-blue-400/30 relative overflow-hidden transition-all duration-200">
+                  <div className="absolute -right-8 -bottom-8 w-36 h-36 bg-white/10 rounded-full blur-2xl pointer-events-none" />
+
+                  {/* Header Badge with Three Dots Minimize Button */}
+                  <div className="flex items-center justify-between gap-2 mb-2.5">
+                    <div className="flex items-center gap-1.5">
+                      <div className="flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 backdrop-blur-md text-[10px] font-bold tracking-wider uppercase border border-white/20">
+                        <Sparkles className="w-3 h-3 text-amber-300" />
+                        <span>Next Stop • #{routeOptimization.nextStop.sequence}</span>
+                      </div>
+
+                      {/* Three Dots Button next to Next Stop Badge to Minimize */}
+                      <button
+                        type="button"
+                        onClick={toggleNextStopMinimized}
+                        className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white flex items-center justify-center transition border border-white/20 shadow-2xs cursor-pointer shrink-0"
+                        title="Minimize Next Stop card"
+                        aria-label="Minimize Next Stop card"
+                      >
+                        <MoreHorizontal className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+
+                    <div className="flex items-center gap-1.5 text-[11px] font-bold bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
+                      <Clock className="w-3 h-3 text-blue-200" />
+                      <span>~{routeOptimization.nextStop.estimatedDriveTimeMinutes}m</span>
+                      <span className="text-white/60">•</span>
+                      <span>{routeOptimization.nextStop.distanceFromPrevKm} km</span>
+                    </div>
+                  </div>
+
+                  {/* Store Name & Location */}
+                  <div className="mb-3">
+                    <h3 className="text-base font-bold text-white tracking-tight leading-snug break-words">
+                      {routeOptimization.nextStop.customer.name}
+                    </h3>
+                    <p className="text-xs text-blue-100/90 font-medium truncate mt-0.5 flex items-center gap-1">
+                      <MapPin className="w-3.5 h-3.5 text-blue-300 shrink-0" />
+                      <span>{routeOptimization.nextStop.customer.deliveryAddress || routeOptimization.nextStop.customer.city || 'On delivery route'}</span>
+                      {routeOptimization.nextStop.customer.phone && (
+                        <>
+                          <span className="text-blue-300">•</span>
+                          <span>{routeOptimization.nextStop.customer.phone}</span>
+                        </>
+                      )}
+                    </p>
+                  </div>
+
+                  {/* Geofence Status Badge */}
+                  <div className="mb-3">
+                    {routeOptimization.nextStop.isWithinGeofence ? (
+                      <div className="inline-flex items-center gap-2 px-3 py-1.5 rounded-xl bg-emerald-500/30 border border-emerald-400/50 text-emerald-200 text-xs font-bold animate-pulse">
+                        <span className="w-2.5 h-2.5 rounded-full bg-emerald-400" />
+                        <span>📍 Within 50m Geofence (Verified Stop)</span>
+                      </div>
+                    ) : (
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-lg bg-white/10 text-blue-100 text-[11px] font-medium">
+                        <Compass className="w-3 h-3 text-blue-300" />
+                        <span>
+                          {routeOptimization.nextStop.distanceFromCurrentKm < 900
+                            ? (routeOptimization.nextStop.distanceFromCurrentKm >= 1
+                                ? `${routeOptimization.nextStop.distanceFromCurrentKm.toFixed(1)} km away from lorry`
+                                : `${Math.round(routeOptimization.nextStop.distanceFromCurrentKm * 1000)}m away from lorry`)
+                            : 'En route on assigned delivery track'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* Turn-by-Turn & Quick Bill Action Buttons */}
+                  <div className="grid grid-cols-2 gap-2 pt-0.5">
+                    <button
+                      type="button"
+                      onClick={e => handleNavigateToCustomer(routeOptimization.nextStop!.customer, e)}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-white text-slate-900 hover:bg-slate-100 active:scale-95 font-bold text-xs shadow-sm transition cursor-pointer"
+                    >
+                      <Navigation className="w-3.5 h-3.5 text-blue-600 fill-blue-600" />
+                      <span>Navigate (Maps)</span>
+                    </button>
+
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setSelectedCustomerId(routeOptimization.nextStop!.customer.id);
+                        setCurrentStep(2);
+                      }}
+                      className="flex items-center justify-center gap-1.5 px-3 py-2.5 rounded-xl bg-emerald-500 hover:bg-emerald-600 text-white active:scale-95 font-bold text-xs shadow-sm transition cursor-pointer"
+                    >
+                      <Receipt className="w-3.5 h-3.5" />
+                      <span>Start Bill</span>
+                    </button>
+                  </div>
+                </div>
+              )
             )}
 
             {/* Smart Route Intelligence Strip & View Switcher */}
@@ -1484,98 +1614,107 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <div
                       key={customer.id}
                       onClick={() => setSelectedCustomerId(customer.id)}
-                      className={`cursor-pointer p-3 rounded-xl border transition flex items-center justify-between gap-2.5 ${
+                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${
                         isSelected
-                          ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-1 ring-blue-500'
+                          ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
                           : isNext
-                          ? 'border-indigo-400 bg-indigo-50/40 shadow-xs ring-1 ring-indigo-300'
+                          ? 'border-indigo-300 bg-indigo-100/75 hover:border-indigo-400 hover:bg-indigo-100/90'
                           : isVisited
-                          ? 'border-slate-200 bg-slate-50/70 opacity-90'
-                          : 'border-slate-200 bg-white hover:border-slate-300 shadow-2xs'
+                          ? 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200'
+                          : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
                       }`}
                     >
-                      {/* Sequence Badge */}
+                      {/* Sequence / Visited Indicator */}
                       <div
-                        className={`w-7 h-7 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 ${
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 transition shadow-2xs ${
                           isVisited
                             ? 'bg-emerald-100 text-emerald-700'
                             : isNext
-                            ? 'bg-blue-600 text-white shadow-xs'
-                            : 'bg-slate-100 text-slate-600'
+                            ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-200'
+                            : 'bg-white text-slate-700 border border-slate-300'
                         }`}
                       >
                         {isVisited ? '✓' : `#${stop.sequence}`}
                       </div>
 
-                      {/* Store Details */}
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs text-slate-900 truncate">
+                      {/* Store Details: Completely Visible Name & Ultra-Clean Balanced Layout */}
+                      <div className="min-w-0 flex-1 space-y-1">
+                        {/* Top Line: Full Customer Name (Completely Visible) + "Good" Badge immediately next to it */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-xs text-slate-900 leading-snug break-words">
                             {customer.name}
                           </span>
-                          {customer.code && (
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {customer.code}
-                            </span>
-                          )}
-                          <CreditRiskBadge creditRisk={customer.creditRisk} compact />
+                          <div className="shrink-0">
+                            <CreditRiskBadge creditRisk={customer.creditRisk} compact />
+                          </div>
                           {isNext && (
-                            <span className="text-[9px] font-bold text-blue-700 bg-blue-100 px-1.5 py-0.2 rounded-full">
+                            <span className="shrink-0 text-[9px] font-bold text-indigo-700 bg-indigo-200/80 px-1.5 py-0.2 rounded-md">
                               Next
                             </span>
                           )}
-                          {isVisited && (
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full">
-                              Visited
-                            </span>
-                          )}
                           {stop.isWithinGeofence && (
-                            <span className="text-[9px] font-bold text-emerald-700 bg-emerald-100 px-1.5 py-0.2 rounded-full animate-pulse">
-                              📍 In Geofence
+                            <span className="shrink-0 text-[9px] font-bold text-emerald-700 bg-emerald-100/90 px-1.5 py-0.2 rounded-md animate-pulse">
+                              📍 Here
                             </span>
                           )}
                         </div>
 
-                        <div className="flex items-center gap-2 text-[11px] text-slate-500 truncate mt-0.5">
-                          <span>{customer.deliveryAddress || customer.city || customer.phone || 'Angoda'}</span>
-                          {stop.distanceFromCurrentKm < 900 && (
-                            <>
-                              <span>•</span>
-                              <span className="font-medium text-slate-600 font-mono">
-                                {Math.round(stop.distanceFromCurrentKm * 1000)}m away
-                              </span>
-                            </>
+                        {/* Subtitle Line: Code • City/Address • Distance + Due Balance */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600 font-medium">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {customer.code && (
+                              <>
+                                <span className="font-mono text-slate-500 text-[10px] shrink-0">
+                                  {customer.code}
+                                </span>
+                                <span className="text-slate-400 shrink-0">•</span>
+                              </>
+                            )}
+                            <span className="text-slate-700 font-semibold">{customer.city || customer.deliveryAddress || customer.phone || 'Angoda'}</span>
+                            {stop.distanceFromCurrentKm != null && stop.distanceFromCurrentKm < 900 && (
+                              <>
+                                <span className="text-slate-400 shrink-0">•</span>
+                                <span className="font-mono text-slate-600 text-[10.5px] shrink-0 font-medium">
+                                  {stop.distanceFromCurrentKm >= 1
+                                    ? `${stop.distanceFromCurrentKm.toFixed(1)} km`
+                                    : `${Math.round(stop.distanceFromCurrentKm * 1000)}m`}
+                                </span>
+                              </>
+                            )}
+                          </div>
+
+                          {/* Due balance pill on subtitle row */}
+                          {hasDue ? (
+                            <span className="text-[10.5px] font-bold text-rose-700 bg-rose-50 border border-rose-200/90 px-2 py-0.5 rounded-lg font-mono shrink-0 shadow-2xs">
+                              Due: {formatMoney(balance)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-lg shrink-0 shadow-2xs">
+                              Clear
+                            </span>
                           )}
                         </div>
                       </div>
 
-                      {/* Balance & One-Tap Navigate Action */}
-                      <div className="flex items-center gap-2 shrink-0">
-                        {hasDue ? (
-                          <span className="text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg font-mono">
-                            Due: {formatMoney(balance)}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">
-                            Clear
-                          </span>
-                        )}
-
+                      {/* Right Action Icons (Navigation & Selection Radio) */}
+                      <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                         {/* One-Tap Turn-by-Turn Navigation */}
                         {customer.latitude != null && customer.longitude != null && (
                           <button
                             type="button"
                             onClick={e => handleNavigateToCustomer(customer, e)}
-                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition cursor-pointer"
-                            title="Navigate here in Google Maps"
+                            className="p-1.5 rounded-lg bg-white border border-slate-300 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition cursor-pointer shadow-2xs"
+                            title="Navigate in Google Maps"
                           >
                             <Navigation className="w-3.5 h-3.5" />
                           </button>
                         )}
 
                         <div
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs transition ${
-                            isSelected ? 'bg-blue-600 text-white' : 'border border-slate-300'
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${
+                            isSelected
+                              ? 'bg-blue-600 text-white'
+                              : 'border-2 border-slate-300 bg-white'
                           }`}
                         >
                           {isSelected && '✓'}
@@ -1595,55 +1734,67 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <div
                       key={customer.id}
                       onClick={() => setSelectedCustomerId(customer.id)}
-                      className={`cursor-pointer p-3 rounded-xl border transition flex items-center justify-between gap-2.5 ${
+                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${
                         isSelected
-                          ? 'border-blue-600 bg-blue-50/70 shadow-xs ring-1 ring-blue-500'
-                          : 'border-slate-200 bg-white hover:border-slate-300 shadow-2xs'
+                          ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
+                          : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
                       }`}
                     >
-                      <div className="min-w-0 flex-1">
-                        <div className="flex items-center gap-2 flex-wrap">
-                          <span className="font-bold text-xs text-slate-900 truncate">
+                      <div className="min-w-0 flex-1 space-y-1">
+                        {/* Top Line: Full Customer Name (Completely Visible) + "Good" Badge */}
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <span className="font-bold text-xs text-slate-900 leading-snug break-words">
                             {customer.name}
                           </span>
-                          {customer.code && (
-                            <span className="text-[10px] text-slate-400 font-mono">
-                              {customer.code}
+                          <div className="shrink-0">
+                            <CreditRiskBadge creditRisk={customer.creditRisk} compact />
+                          </div>
+                        </div>
+
+                        {/* Subtitle Line: Code • City/Address + Due Balance */}
+                        <div className="flex items-center justify-between gap-2 flex-wrap text-[11px] text-slate-600 font-medium">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            {customer.code && (
+                              <>
+                                <span className="font-mono text-slate-500 text-[10px] shrink-0">
+                                  {customer.code}
+                                </span>
+                                <span className="text-slate-400 shrink-0">•</span>
+                              </>
+                            )}
+                            <span className="text-slate-700 font-semibold">{customer.city || customer.deliveryAddress || customer.phone || 'No phone'}</span>
+                          </div>
+
+                          {hasDue ? (
+                            <span className="text-[10.5px] font-bold text-rose-700 bg-rose-50 border border-rose-200/90 px-2 py-0.5 rounded-lg font-mono shrink-0 shadow-2xs">
+                              Due: {formatMoney(balance)}
+                            </span>
+                          ) : (
+                            <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200/70 px-2 py-0.5 rounded-lg shrink-0 shadow-2xs">
+                              Clear
                             </span>
                           )}
-                          <CreditRiskBadge creditRisk={customer.creditRisk} compact />
                         </div>
-                        <p className="text-[11px] text-slate-500 truncate">
-                          {customer.phone || customer.deliveryAddress || 'No phone'}
-                        </p>
                       </div>
 
-                      <div className="flex items-center gap-2 shrink-0">
-                        {hasDue ? (
-                          <span className="text-[11px] font-bold text-rose-600 bg-rose-50 border border-rose-200 px-2 py-0.5 rounded-lg font-mono">
-                            Due: {formatMoney(balance)}
-                          </span>
-                        ) : (
-                          <span className="text-[10px] font-semibold text-emerald-600 bg-emerald-50 px-2 py-0.5 rounded-lg">
-                            Clear
-                          </span>
-                        )}
-
+                      <div className="flex items-center gap-1.5 shrink-0 mt-0.5">
                         {/* One-Tap Turn-by-Turn Navigation */}
                         {customer.latitude != null && customer.longitude != null && (
                           <button
                             type="button"
                             onClick={e => handleNavigateToCustomer(customer, e)}
-                            className="p-1.5 rounded-lg bg-blue-50 hover:bg-blue-100 text-blue-600 transition cursor-pointer"
-                            title="Navigate here in Google Maps"
+                            className="p-1.5 rounded-lg bg-white border border-slate-300 hover:bg-blue-50 text-slate-600 hover:text-blue-600 transition cursor-pointer shadow-2xs"
+                            title="Navigate in Google Maps"
                           >
                             <Navigation className="w-3.5 h-3.5" />
                           </button>
                         )}
 
                         <div
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-xs transition ${
-                            isSelected ? 'bg-blue-600 text-white' : 'border border-slate-300'
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${
+                            isSelected
+                              ? 'bg-blue-600 text-white'
+                              : 'border-2 border-slate-300 bg-white'
                           }`}
                         >
                           {isSelected && '✓'}
@@ -1716,6 +1867,31 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     )}
                   </div>
                 )}
+
+                {/* Direct Actions on Selected Customer */}
+                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                  <button
+                    type="button"
+                    onClick={() => setShowDirectCollectionModal(true)}
+                    className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 active:scale-95 text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-emerald-200/80 transition cursor-pointer"
+                  >
+                    <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                    <span className="truncate">Collect Due</span>
+                    {selectedCustomer.outstandingBalance > 0 && (
+                      <span className="text-[10px] font-mono text-emerald-700 bg-emerald-200/60 px-1 py-0.2 rounded font-semibold shrink-0">
+                        {formatMoney(selectedCustomer.outstandingBalance)}
+                      </span>
+                    )}
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowDirectReturnsModal(true)}
+                    className="py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 active:scale-95 text-amber-800 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-amber-200/80 transition cursor-pointer"
+                  >
+                    <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span className="truncate">Direct Return</span>
+                  </button>
+                </div>
 
                 {/* Next Step Button */}
                 <button
@@ -3334,6 +3510,52 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition" />
                 </button>
+
+                {/* 4. Direct Outstanding Collection (Cash / Cheque) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowShiftHubModal(false);
+                    setShowDirectCollectionModal(true);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <Wallet className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-800">Direct Outstanding Collection</span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Collect cash, cheque or transfer directly from shop credit
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition" />
+                </button>
+
+                {/* 5. Direct Returns Collection (Damage / Resale) */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowShiftHubModal(false);
+                    setShowDirectReturnsModal(true);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <RotateCcw className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <span className="text-xs font-bold text-slate-800">Direct Returns Collection</span>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Collect damaged or resale returns &amp; issue credit note
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition" />
+                </button>
               </div>
 
               {/* End Shift & Logout */}
@@ -3355,6 +3577,49 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             </div>
           </div>
         </div>
+      )}
+
+      {/* DIRECT OUTSTANDING COLLECTION MODAL */}
+      <RepDirectCollectionModal
+        isOpen={showDirectCollectionModal}
+        onClose={() => setShowDirectCollectionModal(false)}
+        customer={selectedCustomer}
+        customers={customers}
+        onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+        lorry={selectedLorry || null}
+        user={user}
+        onPaymentSuccess={(payment) => {
+          setActiveReceiptPayment(payment);
+          loadData();
+        }}
+      />
+
+      {/* DIRECT RETURNS COLLECTION MODAL */}
+      <RepDirectReturnsModal
+        isOpen={showDirectReturnsModal}
+        onClose={() => setShowDirectReturnsModal(false)}
+        customer={selectedCustomer}
+        customers={customers}
+        onSelectCustomer={(c) => setSelectedCustomerId(c.id)}
+        products={products}
+        lorry={selectedLorry || null}
+        user={user}
+        onReturnSuccess={(order) => {
+          if (onViewInvoice) {
+            onViewInvoice(order);
+          }
+          loadData();
+        }}
+      />
+
+      {/* CUSTOMER PAYMENT RECEIPT MODAL */}
+      {activeReceiptPayment && (
+        <CustomerReceiptModal
+          isOpen={!!activeReceiptPayment}
+          payment={activeReceiptPayment}
+          customer={activeReceiptPayment.customer || selectedCustomer}
+          onClose={() => setActiveReceiptPayment(null)}
+        />
       )}
     </div>
   );

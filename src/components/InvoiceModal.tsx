@@ -246,7 +246,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {/* Header Double Divider */}
               <div className="border-t-2 border-black my-1.5" />
               <div className="text-center font-bold text-[11px] py-0.5 tracking-wider">
-                *** SALES BILL / DELIVERY SLIP ***
+                {activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
+                  ? '*** GOODS RETURN CREDIT VOUCHER ***'
+                  : '*** SALES BILL / DELIVERY SLIP ***'}
               </div>
               <div className="border-t border-black border-dashed my-1.5" />
 
@@ -290,42 +292,47 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
 
               {/* Items Table (2-line 80mm format: Item name line 1, Qty x Price & Total line 2) */}
-              <div className="border-t-2 border-black my-1.5" />
-              <div className="flex justify-between font-bold text-[10px] pb-1">
-                <span>ITEM DESCRIPTION</span>
-                <span>TOTAL</span>
-              </div>
-              <div className="border-t border-black border-dashed mb-1.5" />
+              {items.length > 0 && (
+                <>
+                  <div className="border-t-2 border-black my-1.5" />
+                  <div className="flex justify-between font-bold text-[10px] pb-1">
+                    <span>ITEM DESCRIPTION</span>
+                    <span>TOTAL</span>
+                  </div>
+                  <div className="border-t border-black border-dashed mb-1.5" />
 
-              <div className="space-y-1.5 text-[10px]">
-                {loadingDetails && (
-                  <div className="flex items-center justify-center gap-1.5 py-3 text-slate-500 font-sans">
-                    <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0C3B9B]" />
-                    <span>Loading items...</span>
-                  </div>
-                )}
-                {items.length === 0 && !loadingDetails && (
-                  <div className="text-center py-2 text-slate-400 font-sans italic text-[9.5px]">
-                    No items recorded for this bill.
-                  </div>
-                )}
-                {items.map((item) => (
-                  <div key={item.id} className="leading-tight">
-                    <div className="font-bold break-words">{item.product?.name || 'Item'}</div>
-                    <div className="flex justify-between pl-1">
-                      <span>
-                        {item.quantity} {item.product?.unit || 'pcs'} x {formatMoney(item.unitPrice)}
-                      </span>
-                      <span className="font-bold">{formatMoney(item.lineTotal)}</span>
-                    </div>
-                    {item.freeQuantity > 0 && (
-                      <div className="pl-1 font-bold text-[9px] text-black">
-                        &gt;&gt; FREE PROMO: +{item.freeQuantity} {item.product?.unit || 'pcs'} (Rs. 0.00)
+                  <div className="space-y-1.5 text-[10px]">
+                    {items.map((item) => (
+                      <div key={item.id} className="leading-tight">
+                        <div className="font-bold break-words">{item.product?.name || 'Item'}</div>
+                        <div className="flex justify-between pl-1">
+                          <span>
+                            {item.quantity} {item.product?.unit || 'pcs'} x {formatMoney(item.unitPrice)}
+                          </span>
+                          <span className="font-bold">{formatMoney(item.lineTotal)}</span>
+                        </div>
+                        {item.freeQuantity > 0 && (
+                          <div className="pl-1 font-bold text-[9px] text-black">
+                            &gt;&gt; FREE PROMO: +{item.freeQuantity} {item.product?.unit || 'pcs'} (Rs. 0.00)
+                          </div>
+                        )}
                       </div>
-                    )}
+                    ))}
                   </div>
-                ))}
-              </div>
+                </>
+              )}
+
+              {loadingDetails && (
+                <div className="flex items-center justify-center gap-1.5 py-3 text-slate-500 font-sans">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-[#0C3B9B]" />
+                  <span>Loading items...</span>
+                </div>
+              )}
+              {items.length === 0 && returns.length === 0 && !loadingDetails && (
+                <div className="text-center py-2 text-slate-400 font-sans italic text-[9.5px]">
+                  No items recorded for this bill.
+                </div>
+              )}
 
               {/* Returned & Damaged Items (80mm) */}
               {returns && returns.length > 0 && (
@@ -479,7 +486,9 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="flex flex-col sm:flex-row justify-between items-start gap-3 border-b border-slate-200 pb-4">
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                    DISTRIBUTION SALES BILL
+                    {activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
+                      ? 'GOODS RETURN CREDIT NOTE'
+                      : 'DISTRIBUTION SALES BILL'}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500 mt-1">
                     <span>System Ref: {activeOrder.orderNumber}</span>
@@ -561,57 +570,59 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               </div>
 
               {/* Items Table */}
-              <div className="border border-slate-200 rounded-xl overflow-x-auto">
-                <table className="w-full text-left border-collapse text-xs">
-                  <thead className="bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
-                    <tr>
-                      <th className="p-2.5 pl-3">Item & SKU</th>
-                      <th className="p-2.5 text-center">Unit</th>
-                      <th className="p-2.5 text-center">Qty</th>
-                      <th className="p-2.5 text-right">Unit Price</th>
-                      <th className="p-2.5 pr-3 text-right">Line Total</th>
-                    </tr>
-                  </thead>
-                  <tbody className="divide-y divide-slate-100">
-                    {loadingDetails && (
+              {(items.length > 0 || returns.length === 0) && (
+                <div className="border border-slate-200 rounded-xl overflow-x-auto">
+                  <table className="w-full text-left border-collapse text-xs">
+                    <thead className="bg-slate-100 text-slate-500 text-[10px] font-semibold uppercase tracking-wider">
                       <tr>
-                        <td colSpan={5} className="p-4 text-center text-slate-500">
-                          <Loader2 className="w-4 h-4 animate-spin inline-block mr-1.5 text-[#0C3B9B]" />
-                          Loading bill line items...
-                        </td>
+                        <th className="p-2.5 pl-3">Item &amp; SKU</th>
+                        <th className="p-2.5 text-center">Unit</th>
+                        <th className="p-2.5 text-center">Qty</th>
+                        <th className="p-2.5 text-right">Unit Price</th>
+                        <th className="p-2.5 pr-3 text-right">Line Total</th>
                       </tr>
-                    )}
-                    {items.length === 0 && !loadingDetails && (
-                      <tr>
-                        <td colSpan={5} className="p-4 text-center text-slate-400 italic">
-                          No item line records found for this bill.
-                        </td>
-                      </tr>
-                    )}
-                    {items.map((item) => (
-                      <tr key={item.id}>
-                        <td className="p-2.5 pl-3">
-                          <p className="font-medium text-slate-900">{item.product?.name || 'Product'}</p>
-                          <span className="text-[10px] font-mono text-slate-400">{item.product?.sku || ''}</span>
-                        </td>
-                        <td className="p-2.5 text-center text-slate-500">{item.product?.unit || 'Unit'}</td>
-                        <td className="p-2.5 text-center font-bold text-slate-900">
-                          {item.quantity}
-                          {item.freeQuantity > 0 && (
-                            <span className="block text-[10px] font-semibold text-emerald-600">
-                              +{item.freeQuantity} Free
-                            </span>
-                          )}
-                        </td>
-                        <td className="p-2.5 text-right font-mono text-slate-600">{formatMoney(item.unitPrice)}</td>
-                        <td className="p-2.5 pr-3 text-right font-bold text-slate-900 font-mono">
-                          {formatMoney(item.lineTotal)}
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              </div>
+                    </thead>
+                    <tbody className="divide-y divide-slate-100">
+                      {loadingDetails && (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-slate-500">
+                            <Loader2 className="w-4 h-4 animate-spin inline-block mr-1.5 text-[#0C3B9B]" />
+                            Loading bill line items...
+                          </td>
+                        </tr>
+                      )}
+                      {items.length === 0 && !loadingDetails && (
+                        <tr>
+                          <td colSpan={5} className="p-4 text-center text-slate-400 italic">
+                            No item line records found for this bill.
+                          </td>
+                        </tr>
+                      )}
+                      {items.map((item) => (
+                        <tr key={item.id}>
+                          <td className="p-2.5 pl-3">
+                            <p className="font-medium text-slate-900">{item.product?.name || 'Product'}</p>
+                            <span className="text-[10px] font-mono text-slate-400">{item.product?.sku || ''}</span>
+                          </td>
+                          <td className="p-2.5 text-center text-slate-500">{item.product?.unit || 'Unit'}</td>
+                          <td className="p-2.5 text-center font-bold text-slate-900">
+                            {item.quantity}
+                            {item.freeQuantity > 0 && (
+                              <span className="block text-[10px] font-semibold text-emerald-600">
+                                +{item.freeQuantity} Free
+                              </span>
+                            )}
+                          </td>
+                          <td className="p-2.5 text-right font-mono text-slate-600">{formatMoney(item.unitPrice)}</td>
+                          <td className="p-2.5 pr-3 text-right font-bold text-slate-900 font-mono">
+                            {formatMoney(item.lineTotal)}
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              )}
 
               {/* Returned & Damaged Items Table (A4) */}
               {returns && returns.length > 0 && (

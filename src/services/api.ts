@@ -28,6 +28,7 @@ import {
   Payroll,
   HrPayrollSummary,
   VehicleReturnsReport,
+  ReturnableProduct,
   MapFleetData,
   LorryLocationHistory,
   CustomerVisit,
@@ -38,7 +39,7 @@ import {
 
 // Dynamic API URL: uses relative '/api' on Railway / production web,
 // or fallback to localhost:4812 in standalone Vite dev / Electron
-const isDevVite = typeof window !== 'undefined' && window.location.port === '5173';
+const isDevVite = typeof window !== 'undefined' && (['5173', '5174', '5175', '3000'].includes(window.location.port) || Boolean(import.meta.env.DEV));
 const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
 const devHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
 const API_BASE_URL = import.meta.env.VITE_API_URL || (isDevVite || isFileProtocol ? `http://${devHost}:4812/api` : '/api');
@@ -65,6 +66,11 @@ export const ProductService = {
     api.get<{ found: boolean; product: Product; lorryStock: number; lorryFreeStock: number }>(
       `/products/scan/${encodeURIComponent(code)}`,
       { params: { lorryId } }
+    ).then(r => r.data),
+  bulkImport: (payload: { products: any[]; stockMode: 'OVERWRITE' | 'INCREMENT' }) =>
+    api.post<{ success: boolean; created: number; updated: number; message: string; errors?: string[] }>(
+      '/products/bulk-import',
+      payload
     ).then(r => r.data)
 };
 
@@ -171,6 +177,8 @@ export const CustomerService = {
     api.get<Order[]>(`/customers/${id}/orders`).then(r => r.data),
   getUnpaidBills: (id: string) =>
     api.get<Order[]>(`/customers/${id}/unpaid-bills`).then(r => r.data),
+  getReturnableProducts: (id: string) =>
+    api.get<ReturnableProduct[]>(`/customers/${id}/returnable-products`).then(r => r.data),
   recordPayment: (id: string, payload: {
     amount: number;
     paymentMethod?: 'CASH' | 'CHEQUE' | 'BANK_TRANSFER';

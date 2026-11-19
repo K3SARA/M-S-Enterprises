@@ -263,6 +263,24 @@ export interface OrderReturn {
   createdAt?: string;
 }
 
+export interface ReturnableProduct {
+  productId: string;
+  product: Product;
+  latestUnitPrice: number;
+  totalPurchasedQty: number;
+  totalReturnedQty: number;
+  maxReturnableQty: number;
+  bills: {
+    orderId: string;
+    orderNumber: string;
+    paperBillNumber?: string | null;
+    date: string;
+    quantity: number;
+    freeQuantity: number;
+    unitPrice: number;
+  }[];
+}
+
 export interface Order {
   id: string;
   orderNumber: string;

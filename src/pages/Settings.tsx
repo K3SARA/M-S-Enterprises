@@ -309,19 +309,32 @@ export const Settings: React.FC = () => {
     }
   };
 
-  const loadData = async () => {
+  const loadData = async (retryCount = 0) => {
     try {
       setLoading(true);
+      setSaveError(null);
       const [lorryData, routeData, settingsData, userData] = await Promise.all([
-        LorryService.getAll(),
-        RouteService.getAll(),
-        SettingsService.get().catch(() => null),
-        AuthService.getUsers().catch(() => [])
+        LorryService.getAll().catch(e => {
+          console.warn('[Settings] Failed to fetch lorries:', e);
+          return [] as Lorry[];
+        }),
+        RouteService.getAll().catch(e => {
+          console.warn('[Settings] Failed to fetch routes:', e);
+          return [] as Route[];
+        }),
+        SettingsService.get().catch(e => {
+          console.warn('[Settings] Failed to fetch settings:', e);
+          return null;
+        }),
+        AuthService.getUsers().catch(e => {
+          console.warn('[Settings] Failed to fetch users:', e);
+          return [] as User[];
+        })
       ]);
 
-      setLorries(lorryData);
-      setRoutes(routeData);
-      setUsers(userData);
+      if (lorryData) setLorries(lorryData);
+      if (routeData) setRoutes(routeData);
+      if (userData) setUsers(userData);
       if (settingsData) {
         setSettings(settingsData);
         if (settingsData.defaultCurrency && CURRENCIES[settingsData.defaultCurrency as CurrencyCode]) {
@@ -330,6 +343,10 @@ export const Settings: React.FC = () => {
       }
     } catch (err: any) {
       console.error('Failed to load settings data', err);
+      if (retryCount < 2) {
+        setTimeout(() => { void loadData(retryCount + 1); }, 1500);
+        return;
+      }
       setSaveError('Failed to load settings. Ensure backend is running.');
     } finally {
       setLoading(false);
@@ -453,7 +470,7 @@ export const Settings: React.FC = () => {
         </div>
 
         <button
-          onClick={loadData}
+          onClick={() => loadData()}
           className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-white border border-slate-200 hover:bg-slate-50 text-slate-700 text-xs sm:text-sm font-semibold rounded-2xl shadow-2xs transition self-start sm:self-auto"
         >
           <RefreshCw className="w-4 h-4 text-blue-600" />
@@ -470,9 +487,18 @@ export const Settings: React.FC = () => {
       )}
 
       {saveError && (
-        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center gap-3 text-rose-800 text-sm font-semibold animate-fadeIn">
-          <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
-          <span>{saveError}</span>
+        <div className="p-4 bg-rose-50 border border-rose-200 rounded-2xl flex items-center justify-between gap-3 text-rose-800 text-sm font-semibold animate-fadeIn">
+          <div className="flex items-center gap-3">
+            <AlertCircle className="w-5 h-5 text-rose-600 shrink-0" />
+            <span>{saveError}</span>
+          </div>
+          <button
+            type="button"
+            onClick={() => loadData(2)}
+            className="px-3 py-1.5 bg-white hover:bg-rose-100 text-rose-700 border border-rose-300 rounded-xl text-xs font-bold transition shadow-2xs shrink-0"
+          >
+            Retry Connection
+          </button>
         </div>
       )}
 

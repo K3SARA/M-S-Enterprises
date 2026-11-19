@@ -2229,6 +2229,171 @@ app.put('/api/products/:id', async (req: Request, res: Response) => {
   }
 });
 
+// Bulk import products from CSV
+app.post('/api/products/bulk-import', async (req: Request, res: Response) => {
+  try {
+    const { products, stockMode = 'OVERWRITE' } = req.body;
+    if (!Array.isArray(products) || products.length === 0) {
+      return res.status(400).json({ error: 'Products array is required and cannot be empty.' });
+    }
+
+    let createdCount = 0;
+    let updatedCount = 0;
+    const errors: string[] = [];
+
+    await prisma.$transaction(async (tx) => {
+      for (let i = 0; i < products.length; i++) {
+        const item = products[i];
+        const rowNum = i + 1;
+        const sku = String(item.sku || '').trim().toUpperCase();
+        const name = String(item.name || '').trim();
+
+        if (!sku) {
+          errors.push(`Row ${rowNum}: SKU is missing.`);
+          continue;
+        }
+        if (!name) {
+          errors.push(`Row ${rowNum} (${sku}): Name is missing.`);
+          continue;
+        }
+
+        const barcode = item.barcode ? String(item.barcode).trim() : null;
+        const category = String(item.category || 'General').trim();
+        const unit = String(item.unit || 'Unit').trim();
+        const costPrice = parseFloat(item.costPrice || 0) || 0;
+        const unitPrice = parseFloat(item.unitPrice || 0) || 0;
+        const currentStock = parseInt(item.currentStock || 0, 10) || 0;
+        const freeStock = parseInt(item.freeStock || 0, 10) || 0;
+        const minStockAlert = parseInt(item.minStockAlert || 10, 10) || 10;
+        const freeRatioBuy = parseInt(item.freeRatioBuy || 0, 10) || 0;
+        const freeRatioGet = parseInt(item.freeRatioGet || 0, 10) || 0;
+        const isRawMaterial = Boolean(item.isRawMaterial);
+
+        const existing = await tx.product.findUnique({
+          where: { sku }
+        });
+
+        if (existing) {
+          let newCurrentStock = existing.currentStock;
+          let newFreeStock = existing.freeStock;
+
+          if (stockMode === 'INCREMENT') {
+            newCurrentStock = existing.currentStock + currentStock;
+            newFreeStock = existing.freeStock + freeStock;
+          } else {
+            // OVERWRITE: set to specified stock in CSV
+            newCurrentStock = currentStock;
+            newFreeStock = freeStock;
+          }
+
+          const stockDiff = newCurrentStock - existing.currentStock;
+          const freeDiff = newFreeStock - existing.freeStock;
+
+          await tx.product.update({
+            where: { id: existing.id },
+            data: {
+              name,
+              barcode: barcode !== null ? barcode : existing.barcode,
+              category: category || existing.category,
+              unit: unit || existing.unit,
+              costPrice: costPrice > 0 ? costPrice : existing.costPrice,
+              unitPrice: unitPrice > 0 ? unitPrice : existing.unitPrice,
+              currentStock: newCurrentStock,
+              freeStock: newFreeStock,
+              minStockAlert,
+              freeRatioBuy,
+              freeRatioGet,
+              isRawMaterial
+            }
+          });
+
+          if (stockDiff !== 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: existing.id,
+                type: stockDiff > 0 ? 'INBOUND' : 'ADJUSTMENT',
+                quantity: stockDiff,
+                isFreeIssue: false,
+                notes: `Bulk CSV Import (${stockMode}): ${stockDiff > 0 ? '+' : ''}${stockDiff} units`
+              }
+            });
+          }
+
+          if (freeDiff !== 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: existing.id,
+                type: freeDiff > 0 ? 'INBOUND' : 'ADJUSTMENT',
+                quantity: freeDiff,
+                isFreeIssue: true,
+                notes: `Bulk CSV Import Free Issue (${stockMode}): ${freeDiff > 0 ? '+' : ''}${freeDiff} units`
+              }
+            });
+          }
+
+          updatedCount++;
+        } else {
+          // Create new product
+          const created = await tx.product.create({
+            data: {
+              sku,
+              barcode,
+              name,
+              category,
+              unit,
+              costPrice,
+              unitPrice,
+              currentStock,
+              freeStock,
+              minStockAlert,
+              freeRatioBuy,
+              freeRatioGet,
+              isRawMaterial
+            }
+          });
+
+          if (currentStock > 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: created.id,
+                type: 'INBOUND',
+                quantity: currentStock,
+                isFreeIssue: false,
+                notes: 'Initial Bulk CSV Import Stock'
+              }
+            });
+          }
+
+          if (freeStock > 0) {
+            await tx.stockMovement.create({
+              data: {
+                productId: created.id,
+                type: 'INBOUND',
+                quantity: freeStock,
+                isFreeIssue: true,
+                notes: 'Initial Bulk CSV Import Free Stock'
+              }
+            });
+          }
+
+          createdCount++;
+        }
+      }
+    });
+
+    res.json({
+      success: true,
+      created: createdCount,
+      updated: updatedCount,
+      errors,
+      message: `Successfully processed ${createdCount + updatedCount} products (${createdCount} added, ${updatedCount} updated).`
+    });
+  } catch (error: any) {
+    console.error('Bulk product import error:', error);
+    res.status(400).json({ error: error.message || 'Failed to process bulk product import.' });
+  }
+});
+
 // Inbound Stock / Adjustment (Supplier Bulk Inward / Physical Count)
 app.post('/api/products/:id/stock-adjust', async (req: Request, res: Response) => {
   const { id } = req.params;
@@ -3907,6 +4072,22 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           if (retQty <= 0) continue;
 
           const retProduct = await tx.product.findUniqueOrThrow({ where: { id: ret.productId } });
+
+          // STRICT CHECK: Customer must have purchased this product in a completed bill
+          if (customer && customer.code !== 'WALK-IN') {
+            const purchasedRecord = await tx.orderItem.findFirst({
+              where: {
+                productId: ret.productId,
+                order: {
+                  customerId: customer.id,
+                  status: { not: 'CANCELLED' }
+                }
+              }
+            });
+            if (!purchasedRecord) {
+              throw new Error(`Cannot return "${retProduct.name}": ${customer.name} has no completed purchase bill records for this product.`);
+            }
+          }
           const retUnitPrice = ret.unitPrice !== undefined && !isNaN(parseFloat(ret.unitPrice)) && parseFloat(ret.unitPrice) >= 0
             ? parseFloat(ret.unitPrice)
             : retProduct.unitPrice;
@@ -4035,7 +4216,10 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           }
         }
       });
-      const orderNumber = `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
+      const isPureReturn = (!Array.isArray(items) || items.length === 0) && returnAmount > 0;
+      const orderNumber = isPureReturn
+        ? `RET-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
+        : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
 
       // 3. Create Order
       const newOrder = await tx.order.create({
@@ -4124,6 +4308,47 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           where: { id: customerId },
           data: { outstandingBalance: { increment: creditAmount } }
         });
+      } else if (isPureReturn && returnAmount > 0) {
+        // Direct Return Credit: reduce customer's pending outstanding balance
+        const currentBal = customer.outstandingBalance || 0;
+        const creditToApply = Math.min(currentBal, returnAmount);
+        if (creditToApply > 0) {
+          await tx.customer.update({
+            where: { id: customerId },
+            data: { outstandingBalance: { decrement: creditToApply } }
+          });
+
+          // Knock off oldest unpaid bills with the return credit
+          let remCredit = creditToApply;
+          const unpaidOrders = await tx.order.findMany({
+            where: {
+              customerId,
+              paymentStatus: { in: ['UNPAID', 'PARTIAL'] },
+              status: { not: 'CANCELLED' }
+            },
+            orderBy: { createdAt: 'asc' }
+          });
+
+          for (const uOrd of unpaidOrders) {
+            if (remCredit <= 0) break;
+            const due = uOrd.balanceAmount > 0 ? uOrd.balanceAmount : Math.max(0, uOrd.netTotal - (uOrd.paidAmount || 0));
+            if (due <= 0) continue;
+            const applyAmt = Math.min(remCredit, due);
+            const newPaid = (uOrd.paidAmount || 0) + applyAmt;
+            const newBal = due - applyAmt;
+            const newStatus = newBal <= 0 ? 'PAID' : 'PARTIAL';
+
+            await tx.order.update({
+              where: { id: uOrd.id },
+              data: {
+                paidAmount: newPaid,
+                balanceAmount: newBal,
+                paymentStatus: newStatus
+              }
+            });
+            remCredit -= applyAmt;
+          }
+        }
       }
 
       // 5. Process Previous Bill Clearance (Bill-to-Bill Knock-off collected on this delivery visit)
@@ -4687,6 +4912,117 @@ app.get('/api/customers/:id/unpaid-bills', async (req: Request, res: Response) =
     });
 
     res.json(formatted);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Get returnable products for a customer (strictly from completed sales bills)
+app.get('/api/customers/:id/returnable-products', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+
+    // 1. Fetch completed sales bills for this customer (not cancelled, has items)
+    const orders = await prisma.order.findMany({
+      where: {
+        customerId: id,
+        status: { not: 'CANCELLED' },
+        items: { some: {} }
+      },
+      include: {
+        items: {
+          include: {
+            product: true
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // 2. Fetch all returns previously recorded for this customer
+    const allCustomerReturns = await prisma.orderReturn.findMany({
+      where: {
+        order: {
+          customerId: id,
+          status: { not: 'CANCELLED' }
+        }
+      }
+    });
+
+    // Sum returned quantities per product
+    const returnedQtyMap = new Map<string, number>();
+    for (const ret of allCustomerReturns) {
+      const cur = returnedQtyMap.get(ret.productId) || 0;
+      returnedQtyMap.set(ret.productId, cur + ret.quantity);
+    }
+
+    // Map of productId -> aggregated info
+    const productMap = new Map<string, {
+      productId: string;
+      product: any;
+      latestUnitPrice: number;
+      totalPurchasedQty: number;
+      totalReturnedQty: number;
+      maxReturnableQty: number;
+      bills: {
+        orderId: string;
+        orderNumber: string;
+        paperBillNumber: string | null;
+        date: string;
+        quantity: number;
+        freeQuantity: number;
+        unitPrice: number;
+      }[];
+    }>();
+
+    for (const order of orders) {
+      for (const item of order.items) {
+        if (!item.product) continue;
+        const pId = item.productId;
+        const existing = productMap.get(pId);
+        const billEntry = {
+          orderId: order.id,
+          orderNumber: order.orderNumber,
+          paperBillNumber: order.paperBillNumber || null,
+          date: (order.deliveredAt || order.createdAt).toISOString(),
+          quantity: item.quantity,
+          freeQuantity: item.freeQuantity || 0,
+          unitPrice: item.unitPrice
+        };
+
+        if (!existing) {
+          productMap.set(pId, {
+            productId: pId,
+            product: item.product,
+            latestUnitPrice: item.unitPrice,
+            totalPurchasedQty: item.quantity,
+            totalReturnedQty: 0,
+            maxReturnableQty: 0,
+            bills: [billEntry]
+          });
+        } else {
+          existing.totalPurchasedQty += item.quantity;
+          existing.bills.push(billEntry);
+        }
+      }
+    }
+
+    const result: any[] = [];
+    for (const [pId, entry] of productMap.entries()) {
+      const retQty = returnedQtyMap.get(pId) || 0;
+      entry.totalReturnedQty = retQty;
+      entry.maxReturnableQty = Math.max(0, entry.totalPurchasedQty - retQty);
+      result.push(entry);
+    }
+
+    // Sort: items with available returnable qty first, then alphabetically
+    result.sort((a, b) => {
+      if (a.maxReturnableQty > 0 && b.maxReturnableQty === 0) return -1;
+      if (a.maxReturnableQty === 0 && b.maxReturnableQty > 0) return 1;
+      return a.product.name.localeCompare(b.product.name);
+    });
+
+    res.json(result);
   } catch (error: any) {
     res.status(500).json({ error: error.message });
   }
@@ -5434,6 +5770,22 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           if (retQty <= 0) continue;
 
           const retProduct = await tx.product.findUniqueOrThrow({ where: { id: ret.productId } });
+
+          // STRICT CHECK: Customer must have purchased this product in a completed bill
+          if (customer && customer.code !== 'WALK-IN') {
+            const purchasedRecord = await tx.orderItem.findFirst({
+              where: {
+                productId: ret.productId,
+                order: {
+                  customerId: customer.id,
+                  status: { not: 'CANCELLED' }
+                }
+              }
+            });
+            if (!purchasedRecord) {
+              throw new Error(`Cannot return "${retProduct.name}": ${customer.name} has no completed purchase bill records for this product.`);
+            }
+          }
           const retUnitPrice = ret.unitPrice !== undefined && !isNaN(parseFloat(ret.unitPrice)) && parseFloat(ret.unitPrice) >= 0
             ? parseFloat(ret.unitPrice)
             : retProduct.unitPrice;
@@ -5560,7 +5912,10 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           }
         }
       });
-      const orderNumber = `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
+      const isPureReturn = (!Array.isArray(items) || items.length === 0) && returnAmount > 0;
+      const orderNumber = isPureReturn
+        ? `RET-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
+        : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
 
       const createdOrder = await tx.order.create({
         data: {

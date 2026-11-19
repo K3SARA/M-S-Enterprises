@@ -14,9 +14,10 @@ import {
   RotateCcw,
   Camera,
   ShieldCheck,
-  ShieldAlert
+  ShieldAlert,
+  Loader2
 } from 'lucide-react';
-import { Lorry, Customer, Order, Product } from '../types';
+import { Lorry, Customer, Order, Product, ReturnableProduct } from '../types';
 import { LorryService, CustomerService, OrderService, ProductService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { CustomerModal } from '../components/CustomerModal';
@@ -34,6 +35,7 @@ interface BillReturnRow {
   productId: string;
   quantity: number;
   unitPrice?: number;
+  maxReturnableQty?: number;
   returnType: 'DAMAGE' | 'RESALE';
   reason?: string;
 }
@@ -73,6 +75,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const [, setLoadingUnpaidBills] = useState<boolean>(false);
   const [settlePreviousBill, setSettlePreviousBill] = useState<boolean>(false);
   const [settleAmount, setSettleAmount] = useState<string>('');
+
+  // Customer Returnable Products (strictly from completed sales bills)
+  const [customerReturnableProducts, setCustomerReturnableProducts] = useState<ReturnableProduct[]>([]);
+  const [loadingReturnables, setLoadingReturnables] = useState<boolean>(false);
 
   // Credit Stop Override State
   const [showAdminPasscodeModal, setShowAdminPasscodeModal] = useState<boolean>(false);
@@ -231,7 +237,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const availableLorryProducts = selectedLorry?.lorryStocks?.filter((s: any) => (s.quantity > 0) || (s.freeQuantity && s.freeQuantity > 0)) || [];
   const selectedCustomer = selectedCustomerId !== 'walk-in' ? customers.find(c => c.id === selectedCustomerId) : null;
 
-  // Load unpaid bills when selected customer changes
+  // Load unpaid bills and returnable products when selected customer changes
   useEffect(() => {
     if (selectedCustomerId && selectedCustomerId !== 'walk-in') {
       setLoadingUnpaidBills(true);
@@ -257,8 +263,20 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           setSettleAmount('');
         })
         .finally(() => setLoadingUnpaidBills(false));
+
+      setLoadingReturnables(true);
+      CustomerService.getReturnableProducts(selectedCustomerId)
+        .then((returnables) => {
+          setCustomerReturnableProducts(Array.isArray(returnables) ? returnables : []);
+        })
+        .catch((err) => {
+          console.error('Failed to fetch returnable products:', err);
+          setCustomerReturnableProducts([]);
+        })
+        .finally(() => setLoadingReturnables(false));
     } else {
       setCustomerUnpaidBills([]);
+      setCustomerReturnableProducts([]);
       setSettlePreviousBill(false);
       setSettleAmount('');
     }
@@ -341,9 +359,15 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     const updated = [...returnItems];
     const currentRow = { ...updated[index], [field]: value };
     if (field === 'productId') {
-      const prod = warehouseProducts.find(p => p.id === value);
-      if (prod) {
-        currentRow.unitPrice = prod.unitPrice;
+      const returnable = customerReturnableProducts.find(rp => rp.productId === value);
+      if (returnable) {
+        currentRow.unitPrice = returnable.latestUnitPrice;
+        currentRow.maxReturnableQty = returnable.maxReturnableQty;
+      } else {
+        const prod = warehouseProducts.find(p => p.id === value);
+        if (prod) {
+          currentRow.unitPrice = prod.unitPrice;
+        }
       }
     }
     updated[index] = currentRow;
@@ -715,46 +739,53 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         </div>
       )}
 
-      {/* Bill Entry Workspace */}
-      <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
-        {/* Form Entry Card (2 Cols) */}
-        <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
-            <div className="flex items-center gap-2">
-              <FileText className={`w-4.5 h-4.5 ${billMode === 'LORRY' ? 'text-blue-600' : 'text-emerald-600'}`} />
+      {/* Bill Entry Workspace - Full Width to Fit Screen */}
+      <div className="w-full bg-slate-200/80 border border-slate-300 rounded-3xl shadow-sm p-5 sm:p-6 lg:p-8 space-y-6">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-300/80 pb-4">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${
+              billMode === 'LORRY' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+            }`}>
+              <FileText className="w-5 h-5" />
+            </div>
+            <div>
               <h2 className="text-sm sm:text-base font-bold text-slate-900 uppercase tracking-wider">
                 {billMode === 'LORRY' ? 'Paper Bill Slip Details' : 'Walk-in Counter Sale Details'}
               </h2>
-            </div>
-            <div className="flex items-center gap-2">
-              <button
-                type="button"
-                onClick={addReturnRow}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs sm:text-sm font-semibold rounded-xl transition-colors text-amber-700 bg-amber-50 hover:bg-amber-100 border border-amber-200/70"
-                title="Add Returned or Damaged goods to deduct from bill total"
-              >
-                <RotateCcw className="w-3.5 h-3.5" />
-                <span>+ Return / Damage</span>
-              </button>
-              <button
-                type="button"
-                onClick={addItemRow}
-                className={`flex items-center gap-1.5 px-3.5 py-1.5 text-xs sm:text-sm font-semibold rounded-xl transition-colors ${
-                  billMode === 'LORRY'
-                    ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
-                    : 'text-emerald-700 bg-emerald-50 hover:bg-emerald-100'
-                }`}
-              >
-                <Plus className="w-4 h-4" /> Add Item Line
-              </button>
+              <p className="text-xs text-slate-600 font-medium">
+                {billMode === 'LORRY' ? 'Enter paper bill slip details from driver lorry route' : 'Direct on-the-spot warehouse sales counter bill'}
+              </p>
             </div>
           </div>
+          <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={addReturnRow}
+              className="flex items-center gap-1.5 px-3.5 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-colors text-amber-900 bg-amber-100 hover:bg-amber-200/80 border border-amber-300 cursor-pointer shadow-2xs"
+              title="Add Returned or Damaged goods to deduct from bill total"
+            >
+              <RotateCcw className="w-3.5 h-3.5" />
+              <span>+ Return / Damage</span>
+            </button>
+            <button
+              type="button"
+              onClick={addItemRow}
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer shadow-2xs ${
+                billMode === 'LORRY'
+                  ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
+                  : 'text-white bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
+              }`}
+            >
+              <Plus className="w-4 h-4" /> <span>Add Item Line</span>
+            </button>
+          </div>
+        </div>
 
           <form onSubmit={handleSubmitBill} className="space-y-4">
             {/* Top row: Paper Bill Number & Customer Selection */}
             <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
               <div>
-                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
                   {billMode === 'LORRY' ? "Driver's Paper Bill # (Slip / Invoice No)" : 'Office / Counter Receipt # (Optional)'}
                 </label>
                 <input
@@ -762,19 +793,19 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   value={paperBillNumber}
                   onChange={(e) => setPaperBillNumber(e.target.value)}
                   placeholder={billMode === 'LORRY' ? 'e.g. SLIP-1082 or B-492' : 'e.g. COUNTER-101 (or leave blank)'}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                 />
               </div>
 
               <div>
                 <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
                     {billMode === 'LORRY' ? 'Retail Customer / Outlet *' : 'Customer Account *'}
                   </label>
                   <button
                     type="button"
                     onClick={() => setShowAddCustomerModal(true)}
-                    className="text-[11px] font-bold text-blue-600 hover:text-blue-700 flex items-center gap-1 cursor-pointer transition"
+                    className="text-[11px] font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition"
                     title="Register New Customer"
                   >
                     <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
@@ -785,7 +816,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   value={selectedCustomerId}
                   onChange={(e) => setSelectedCustomerId(e.target.value)}
                   required
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                 >
                   {billMode === 'WALK_IN' ? (
                     <>
@@ -966,20 +997,23 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   const itemInfo = availableItems.find(s => s.productId === item.productId);
                   const price = itemInfo ? itemInfo.unitPrice : 0;
                   const lineTotal = price * (item.quantity || 0);
-                  const hasScheme = itemInfo && itemInfo.freeRatioBuy && itemInfo.freeRatioBuy > 0 && itemInfo.freeRatioGet;
+                  const hasScheme = Boolean(itemInfo && (itemInfo.freeRatioBuy ?? 0) > 0 && (itemInfo.freeRatioGet ?? 0) > 0);
 
                   return (
                     <div
                       key={index}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-3 bg-slate-50 border border-slate-200/70 rounded-2xl"
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs"
                     >
                       {/* Product Selector */}
-                      <div className="flex-1 w-full">
+                      <div className="flex-1 w-full min-w-0">
+                        <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                          Product &amp; Floating Stock
+                        </label>
                         <select
                           value={item.productId}
                           onChange={(e) => updateItemRow(index, 'productId', e.target.value)}
                           required
-                          className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                         >
                           <option value="">
                             {billMode === 'LORRY' ? '-- Select Item on Lorry --' : '-- Select Item in Warehouse --'}
@@ -996,9 +1030,12 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                       </div>
 
                       {/* Quantity Controls Grid */}
-                      <div className="flex items-center gap-2">
+                      <div className="flex items-center gap-2.5 shrink-0">
                         {/* Paid Qty */}
                         <div className="w-24">
+                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-center mb-1">
+                            Paid Qty
+                          </label>
                           <input
                             type="number"
                             min="1"
@@ -1008,42 +1045,53 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                             placeholder="Paid Qty"
                             title="Billed / Paid Quantity"
                             required
-                            className="w-full bg-white border border-slate-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                            className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center shadow-2xs"
                           />
                         </div>
 
                         {/* Free Issue Qty */}
                         <div className="w-24 relative">
+                          <label className="block text-[9px] font-bold text-emerald-800 uppercase tracking-wider text-center mb-1">
+                            Free Qty
+                          </label>
                           <input
                             type="number"
                             min="0"
                             max={itemInfo ? (itemInfo.stock + itemInfo.freeStock) : 9999}
-                            value={item.freeQuantity !== undefined ? item.freeQuantity : ''}
+                            value={item.freeQuantity || ''}
                             onChange={(e) => updateItemRow(index, 'freeQuantity', parseInt(e.target.value, 10) || 0)}
                             placeholder="0 Free"
                             title="Promotional Free Issue (Cost: Rs. 0.00)"
-                            className="w-full bg-emerald-50/70 border border-emerald-200 text-emerald-900 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center"
+                            className="w-full bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center shadow-2xs"
                           />
-                          {hasScheme && item.quantity > 0 && (
-                            <span className="hidden sm:inline-block absolute -top-2 right-1 px-1 bg-emerald-600 text-[8px] font-bold text-white rounded">
+                          {hasScheme && (item.quantity ?? 0) > 0 ? (
+                            <span className="hidden sm:inline-block absolute top-0 right-1 px-1 bg-emerald-600 text-[8px] font-bold text-white rounded shadow-2xs">
                               Auto
                             </span>
-                          )}
+                          ) : null}
                         </div>
 
                         {/* Line Total */}
-                        <div className="w-24 text-right font-mono text-xs font-bold text-slate-800">
-                          {formatMoney(lineTotal)}
+                        <div className="w-28 text-right pr-1">
+                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-right mb-1">
+                            Line Total
+                          </label>
+                          <div className="font-mono text-xs font-bold text-slate-900 py-2">
+                            {formatMoney(lineTotal)}
+                          </div>
                         </div>
 
                         {/* Delete */}
-                        <button
-                          type="button"
-                          onClick={() => removeItemRow(index)}
-                          className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white transition-colors"
-                        >
-                          <Trash2 className="w-4 h-4" />
-                        </button>
+                        <div className="pt-4">
+                          <button
+                            type="button"
+                            onClick={() => removeItemRow(index)}
+                            className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
+                            title="Remove item line"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
                       </div>
                     </div>
                   );
@@ -1074,6 +1122,20 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                 </button>
               </div>
 
+              {loadingReturnables && (
+                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2 text-xs text-slate-500">
+                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                  <span>Loading purchased products from customer's completed bills...</span>
+                </div>
+              )}
+
+              {selectedCustomerId && !loadingReturnables && customerReturnableProducts.length === 0 && (
+                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex items-center gap-2 text-xs text-amber-800">
+                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                  <span>No completed bills found for this customer. Only products previously purchased in completed bills can be returned.</span>
+                </div>
+              )}
+
               {returnItems.length === 0 ? (
                 <div className="p-3 bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-500">
                   <span>No returned or damaged items added for this bill.</span>
@@ -1094,14 +1156,14 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   return (
                     <div
                       key={index}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-3 bg-amber-50/40 border border-amber-200/70 rounded-2xl"
+                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-3.5 bg-amber-100/90 border border-amber-300 rounded-2xl shadow-2xs"
                     >
                       {/* Condition / Return Type */}
                       <div className="w-full sm:w-44 shrink-0">
                         <select
                           value={ret.returnType}
                           onChange={(e) => updateReturnRow(index, 'returnType', e.target.value as any)}
-                          className="w-full bg-white border border-amber-200 rounded-xl px-2.5 py-2 text-xs font-bold text-amber-900 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
                         >
                           <option value="DAMAGE">💥 Damaged / Expired</option>
                           <option value="RESALE">✨ Good Condition</option>
@@ -1114,14 +1176,22 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                           value={ret.productId}
                           onChange={(e) => updateReturnRow(index, 'productId', e.target.value)}
                           required
-                          className="w-full bg-white border border-amber-200 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
                         >
                           <option value="">-- Select Returned Product --</option>
-                          {warehouseProducts.map((p) => (
-                            <option key={p.id} value={p.id}>
-                              {p.name} ({p.sku}) - Price: {formatMoney(p.unitPrice)}
-                            </option>
-                          ))}
+                          {customerReturnableProducts.length > 0 ? (
+                            customerReturnableProducts.map((rp) => (
+                              <option key={rp.productId} value={rp.productId}>
+                                {rp.product.name} ({rp.product.sku}) - Max: {rp.maxReturnableQty} {rp.product.unit || 'pcs'} @ {formatMoney(rp.latestUnitPrice)}
+                              </option>
+                            ))
+                          ) : (
+                            warehouseProducts.map((p) => (
+                              <option key={p.id} value={p.id}>
+                                {p.name} ({p.sku}) - Price: {formatMoney(p.unitPrice)}
+                              </option>
+                            ))
+                          )}
                         </select>
                       </div>
 
@@ -1135,7 +1205,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                           placeholder="Qty"
                           title="Return Quantity"
                           required
-                          className="w-full bg-white border border-amber-200 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center"
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center shadow-2xs"
                         />
                       </div>
 
@@ -1149,7 +1219,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                           onChange={(e) => updateReturnRow(index, 'unitPrice', parseFloat(e.target.value) || 0)}
                           placeholder="Rate"
                           title="Return Credit Rate"
-                          className="w-full bg-white border border-amber-200 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right"
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right shadow-2xs"
                         />
                       </div>
 
@@ -1160,7 +1230,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                           value={ret.reason || ''}
                           onChange={(e) => updateReturnRow(index, 'reason', e.target.value)}
                           placeholder="Reason (e.g. Expired, Stale)"
-                          className="w-full bg-white border border-amber-200 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500"
+                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
                         />
                       </div>
 
@@ -1184,10 +1254,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
             </div>
 
             {/* Payment Details */}
-            <div className="p-4 bg-slate-50 border border-slate-200/80 rounded-2xl space-y-4">
+            <div className="p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl space-y-4 shadow-2xs">
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
                 <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
                     Payment Method
                   </label>
                   <select
@@ -1199,7 +1269,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                         setShowAdminPasscodeModal(true);
                       }
                     }}
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                   >
                     <option value="CASH">Cash Payment</option>
                     <option value="CREDIT">Credit (Pay Later)</option>
@@ -1365,7 +1435,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
             </div>
 
             {/* Calculations & Submit */}
-            <div className="pt-3 border-t border-slate-100 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6">
                 <div>
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
@@ -1449,70 +1519,6 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
             </div>
           </form>
         </div>
-
-        {/* Right-Side Stock Overview (1 Col) */}
-        <div className="space-y-4">
-          <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-5 space-y-3">
-            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
-              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-                {billMode === 'LORRY' ? (
-                  <>
-                    <Truck className="w-4 h-4 text-blue-600" />
-                    Stock Left in {selectedLorry?.vehicleNumber || 'Lorry'}
-                  </>
-                ) : (
-                  <>
-                    <Building2 className="w-4 h-4 text-emerald-600" />
-                    Central Warehouse Stock
-                  </>
-                )}
-              </h3>
-              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-slate-100 text-slate-600">
-                {availableItems.length} Items Available
-              </span>
-            </div>
-
-            <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
-              {availableItems.length > 0 ? (
-                availableItems.map((item) => (
-                  <div
-                    key={item.id}
-                    className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-xl text-xs hover:bg-slate-100/70 transition-colors"
-                  >
-                    <div className="pr-2">
-                      <span className="font-medium text-slate-800 block truncate max-w-[140px] sm:max-w-[180px]">
-                        {item.name}
-                      </span>
-                      <div className="flex items-center gap-1.5">
-                        <span className="font-mono text-[10px] text-slate-400">{formatMoney(item.unitPrice)}</span>
-                        {item.freeRatioBuy && item.freeRatioBuy > 0 && item.freeRatioGet ? (
-                          <span className="text-[9px] font-bold text-emerald-600 bg-emerald-50 px-1 rounded">
-                            Buy {item.freeRatioBuy}+{item.freeRatioGet}
-                          </span>
-                        ) : null}
-                      </div>
-                    </div>
-                    <div className="flex flex-col items-end shrink-0">
-                      <span className="font-mono font-bold text-slate-900 px-2 py-0.5 bg-white border border-slate-200 rounded-lg text-xs">
-                        {item.stock} {item.unit}
-                      </span>
-                      {item.freeStock > 0 && (
-                        <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-1 rounded mt-0.5 border border-emerald-200/60">
-                          +{item.freeStock} Free
-                        </span>
-                      )}
-                    </div>
-                  </div>
-                ))
-              ) : (
-                <div className="text-center py-8 text-xs text-slate-400">
-                  {billMode === 'LORRY' ? 'Lorry has 0 items remaining.' : 'Warehouse has 0 items in stock.'}
-                </div>
-              )}
-            </div>
-          </div>
-        </div>
-      </div>
 
       {/* Today's Recorded Bills Table */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 space-y-4">
@@ -1601,6 +1607,73 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
             </tbody>
           </table>
         </div>
+      </div>
+
+      {/* AVAILABLE STOCK OVERVIEW (FULL WIDTH, DOWN AFTER ALL) */}
+      <div id="stock-overview-section" className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
+          <div className="flex items-center gap-2.5">
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
+              billMode === 'LORRY' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
+            }`}>
+              {billMode === 'LORRY' ? <Truck className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
+            </div>
+            <div>
+              <h3 className="text-sm font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                {billMode === 'LORRY'
+                  ? `Stock Left in ${selectedLorry?.vehicleNumber || 'Lorry'}`
+                  : 'Central Warehouse Stock'}
+              </h3>
+              <p className="text-xs text-slate-500 mt-0.5">
+                {billMode === 'LORRY'
+                  ? `Current inventory loaded inside vehicle ${selectedLorry?.vehicleNumber || ''} available for delivery.`
+                  : 'Central warehouse stock available for direct walk-in / desk sales counter.'}
+              </p>
+            </div>
+          </div>
+          <span className="text-xs font-bold px-3 py-1 rounded-full bg-slate-100 text-slate-700 font-mono self-start sm:self-auto border border-slate-200/60 shadow-2xs">
+            {availableItems.length} Items Available
+          </span>
+        </div>
+
+        {availableItems.length > 0 ? (
+          <div className="grid grid-cols-1 sm:grid-cols-2 md:grid-cols-3 lg:grid-cols-4 xl:grid-cols-5 gap-3">
+            {availableItems.map((item) => (
+              <div
+                key={item.id}
+                className="flex items-center justify-between p-3.5 bg-slate-50 hover:bg-slate-100/80 border border-slate-200/80 rounded-2xl transition-colors shadow-2xs"
+              >
+                <div className="min-w-0 pr-2">
+                  <span className="font-bold text-slate-900 block truncate text-xs" title={item.name}>
+                    {item.name}
+                  </span>
+                  <div className="flex items-center gap-1.5 mt-0.5">
+                    <span className="font-mono text-[11px] text-slate-500 font-semibold">{formatMoney(item.unitPrice)}</span>
+                    {item.freeRatioBuy && item.freeRatioBuy > 0 && item.freeRatioGet ? (
+                      <span className="text-[9px] font-bold text-emerald-700 bg-emerald-50 px-1 py-0.2 rounded border border-emerald-200/60">
+                        Buy {item.freeRatioBuy}+{item.freeRatioGet}
+                      </span>
+                    ) : null}
+                  </div>
+                </div>
+                <div className="flex flex-col items-end shrink-0">
+                  <span className="font-mono font-bold text-slate-900 px-2.5 py-1 bg-white border border-slate-200/90 rounded-xl text-xs shadow-2xs">
+                    {item.stock} {item.unit}
+                  </span>
+                  {item.freeStock > 0 && (
+                    <span className="text-[10px] font-mono font-semibold text-emerald-700 bg-emerald-50 px-1.5 py-0.2 rounded-md mt-1 border border-emerald-200/60">
+                      +{item.freeStock} Free
+                    </span>
+                  )}
+                </div>
+              </div>
+            ))}
+          </div>
+        ) : (
+          <div className="text-center py-8 text-xs text-slate-400">
+            {billMode === 'LORRY' ? 'Lorry has 0 items remaining.' : 'Warehouse has 0 items in stock.'}
+          </div>
+        )}
       </div>
 
       {/* QUICK ADD CUSTOMER MODAL */}

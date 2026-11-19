@@ -8,6 +8,16 @@ export default defineConfig({
   server: {
     port: 5173,
     strictPort: true,
+    watch: {
+      usePolling: true,
+      interval: 150
+    },
+    proxy: {
+      '/api': {
+        target: 'http://127.0.0.1:4812',
+        changeOrigin: true
+      }
+    },
     fs: {
       strict: false,
       allow: ['..']

@@ -9,16 +9,19 @@ import {
   Trash2, 
   Package,
   Boxes,
-  Truck
+  Truck,
+  FileSpreadsheet
 } from 'lucide-react';
 import { ProductService } from '../services/api';
-import { Product } from '../types';
+import { Product, User } from '../types';
 import { ProductModal } from '../components/ProductModal';
 import { StockAdjustModal } from '../components/StockAdjustModal';
+import { CsvProductImportModal } from '../components/CsvProductImportModal';
 import { useCurrency } from '../context/CurrencyContext';
 
 interface InventoryProps {
   onNavigateToSuppliers?: () => void;
+  currentUser?: User | null;
 }
 
 const TileTooltip: React.FC<{
@@ -59,7 +62,7 @@ const TileTooltip: React.FC<{
   );
 };
 
-export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers }) => {
+export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers, currentUser }) => {
   const { formatMoney } = useCurrency();
   const [products, setProducts] = useState<Product[]>([]);
   const [, setLoading] = useState(true);
@@ -67,7 +70,19 @@ export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers }) =
   const [lowStockOnly, setLowStockOnly] = useState(false);
   const [materialFilter, setMaterialFilter] = useState<'ALL' | 'FINISHED' | 'RAW'>('ALL');
 
+  // Check if admin user
+  const user = currentUser || (() => {
+    try {
+      const saved = localStorage.getItem('distributor_auth_user');
+      return saved ? JSON.parse(saved) : null;
+    } catch {
+      return null;
+    }
+  })();
+  const isAdmin = !user || user.role === 'ADMIN';
+
   // Modal states
+  const [isCsvModalOpen, setIsCsvModalOpen] = useState(false);
   const [isProductModalOpen, setIsProductModalOpen] = useState(false);
   const [editingProduct, setEditingProduct] = useState<Product | null>(null);
 
@@ -142,6 +157,18 @@ export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers }) =
               Receive Inbound GRN
             </button>
           )}
+
+          {isAdmin && (
+            <button
+              onClick={() => setIsCsvModalOpen(true)}
+              className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-4 py-3 bg-blue-50 hover:bg-blue-100 active:scale-[0.98] text-blue-700 font-semibold rounded-2xl border border-blue-200/80 transition text-xs shadow-2xs"
+              title="Bulk import products & stock via CSV file"
+            >
+              <FileSpreadsheet className="w-4 h-4 text-blue-600" />
+              Import CSV
+            </button>
+          )}
+
           <button
             onClick={openAddModal}
             className="w-full sm:w-auto inline-flex items-center justify-center gap-2 px-5 py-3 bg-[#0071E3] hover:bg-blue-600 active:scale-[0.98] text-white font-semibold rounded-2xl shadow-sm transition text-xs"
@@ -476,6 +503,13 @@ export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers }) =
         product={adjustingProduct}
         onClose={() => setIsAdjustModalOpen(false)}
         onAdjusted={loadProducts}
+      />
+
+      <CsvProductImportModal
+        isOpen={isCsvModalOpen}
+        onClose={() => setIsCsvModalOpen(false)}
+        onImportSuccess={loadProducts}
+        existingProducts={products}
       />
     </div>
   );
