@@ -1091,3 +1091,30 @@ export interface BankSummary {
   recentTransactions: BankTransaction[];
 }
 
+// --------------------------------------------------------
+// LORRY-TO-LORRY STOCK TRANSFERS & MUTUAL EXCHANGES
+// --------------------------------------------------------
+export interface LorryStockTransferItem {
+  id: string;
+  transferId: string;
+  productId: string;
+  product?: Product;
+  direction: 'FORWARD' | 'REVERSE';
+  quantity: number;
+  freeQuantity: number;
+}
+
+export interface LorryStockTransfer {
+  id: string;
+  transferNumber: string;
+  fromLorryId: string;
+  toLorryId: string;
+  fromLorry?: { id: string; vehicleNumber: string; driverName: string };
+  toLorry?: { id: string; vehicleNumber: string; driverName: string };
+  notes?: string | null;
+  transferredAt: string;
+  createdAt: string;
+  items: LorryStockTransferItem[];
+}
+
+

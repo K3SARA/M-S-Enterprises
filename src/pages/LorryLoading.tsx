@@ -9,11 +9,13 @@ import {
   FileSpreadsheet,
   Boxes,
   Compass,
-  RotateCcw
+  RotateCcw,
+  ArrowLeftRight
 } from 'lucide-react';
 import { Lorry, Product, LorryLoading as LorryLoadingType } from '../types';
 import { LorryService, ProductService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
+import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
 
 interface LoadingRow {
   productId: string;
@@ -34,6 +36,7 @@ export const LorryLoading: React.FC = () => {
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
+  const [showExchangeModal, setShowExchangeModal] = useState<boolean>(false);
 
   // Draft persistence
   const DRAFT_KEY = 'distributor_lorry_loading_draft';
@@ -241,11 +244,23 @@ export const LorryLoading: React.FC = () => {
           </p>
         </div>
 
-        <div className="self-start sm:self-auto flex items-center gap-2 text-xs font-medium bg-white px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl border border-slate-200/80 shadow-2xs">
-          <Calendar className="w-4 h-4 text-slate-400" />
-          <span className="text-slate-600 font-medium">
-            Today: {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
-          </span>
+        <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setShowExchangeModal(true)}
+            className="flex items-center gap-2 px-3.5 py-2 text-xs font-bold text-purple-700 bg-purple-50 hover:bg-purple-100 border border-purple-200/90 rounded-2xl shadow-2xs transition-all active:scale-95 cursor-pointer"
+            title="Transfer or swap inventory between two lorries on route"
+          >
+            <ArrowLeftRight className="w-4 h-4 text-purple-600" />
+            <span>Exchange Between Lorries</span>
+          </button>
+
+          <div className="flex items-center gap-2 text-xs font-medium bg-white px-3 py-1.5 sm:px-3.5 sm:py-2 rounded-2xl border border-slate-200/80 shadow-2xs">
+            <Calendar className="w-4 h-4 text-slate-400" />
+            <span className="text-slate-600 font-medium">
+              Today: {new Date().toLocaleDateString('en-US', { weekday: 'short', month: 'short', day: 'numeric' })}
+            </span>
+          </div>
         </div>
       </div>
 
@@ -680,6 +695,19 @@ export const LorryLoading: React.FC = () => {
           </div>
         </div>
       </div>
+
+      {/* Lorry Stock Exchange Modal */}
+      <LorryStockExchangeModal
+        isOpen={showExchangeModal}
+        onClose={() => setShowExchangeModal(false)}
+        defaultFromLorryId={selectedLorryId}
+        onSuccess={() => {
+          loadData();
+          if (selectedLorryId) {
+            fetchActiveLoading(selectedLorryId);
+          }
+        }}
+      />
     </div>
   );
 };

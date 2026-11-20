@@ -676,3 +676,28 @@ model BankTransaction {
   updatedAt     DateTime @updatedAt
 }
 
+// --------------------------------------------------------
+// LORRY-TO-LORRY STOCK TRANSFERS & MUTUAL EXCHANGES
+// --------------------------------------------------------
+model LorryStockTransfer {
+  id              String   @id @default(uuid())
+  transferNumber  String   @unique // e.g. "TRF-20261120-001"
+  fromLorryId     String
+  toLorryId       String
+  notes           String?
+  transferredAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  items           LorryStockTransferItem[]
+}
+
+model LorryStockTransferItem {
+  id            String             @id @default(uuid())
+  transferId    String
+  transfer      LorryStockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId     String
+  direction     String             @default("FORWARD") // "FORWARD" (from -> to) or "REVERSE" (to -> from)
+  quantity      Int                @default(0)
+  freeQuantity  Int                @default(0)
+}
+

@@ -625,3 +625,71 @@ model Payroll {
 
   salaryAdvances   SalaryAdvance[]
 }
+
+// --------------------------------------------------------
+// BANK MANAGEMENT
+// --------------------------------------------------------
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  name          String                       // e.g. "Commercial Bank - Main"
+  bankName      String                       // e.g. "Commercial Bank"
+  accountNumber String   @unique
+  accountType   String   @default("CURRENT") // CURRENT | SAVINGS | CASH
+  balance       Float    @default(0.0)
+  color         String   @default("#0C3B9B") // For UI card color
+  isActive      Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions  BankTransaction[]
+}
+
+model BankTransaction {
+  id            String      @id @default(uuid())
+  accountId     String
+  account       BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  type          String      // DEPOSIT | WITHDRAWAL | TRANSFER_IN | TRANSFER_OUT
+  amount        Float
+  balanceAfter  Float       @default(0.0)
+
+  category      String      @default("OTHER")
+  description   String
+  reference     String?
+  transactedAt  DateTime    @default(now())
+
+  relatedOrderId     String?
+  relatedSupplierId  String?
+  relatedEmployeeId  String?
+  transferToAccountId String?
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+
+// --------------------------------------------------------
+// LORRY-TO-LORRY STOCK TRANSFERS & MUTUAL EXCHANGES
+// --------------------------------------------------------
+model LorryStockTransfer {
+  id              String   @id @default(uuid())
+  transferNumber  String   @unique // e.g. "TRF-20261120-001"
+  fromLorryId     String
+  toLorryId       String
+  notes           String?
+  transferredAt   DateTime @default(now())
+  createdAt       DateTime @default(now())
+
+  items           LorryStockTransferItem[]
+}
+
+model LorryStockTransferItem {
+  id            String             @id @default(uuid())
+  transferId    String
+  transfer      LorryStockTransfer @relation(fields: [transferId], references: [id], onDelete: Cascade)
+  productId     String
+  direction     String             @default("FORWARD") // "FORWARD" (from -> to) or "REVERSE" (to -> from)
+  quantity      Int                @default(0)
+  freeQuantity  Int                @default(0)
+}

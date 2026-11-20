@@ -37,7 +37,9 @@ import {
   GeofenceCheckinResult,
   BankAccount,
   BankTransaction,
-  BankSummary
+  BankSummary,
+  LorryStockTransfer,
+  LorryStockTransferItem
 } from '../types';
 
 // Dynamic API URL: uses relative '/api' on Railway / production web,
@@ -728,4 +730,16 @@ export const BankService = {
     api.post<BankTransaction>('/bank/transactions', data).then(r => r.data),
   deleteTransaction: (id: string) => api.delete(`/bank/transactions/${id}`).then(r => r.data),
   getSummary: () => api.get<BankSummary>('/bank/summary').then(r => r.data),
+};
+
+export const LorryTransferService = {
+  getTransfers: (params?: { lorryId?: string; limit?: number }) =>
+    api.get<LorryStockTransfer[]>('/lorries/transfers', { params }).then(r => r.data),
+  transferStock: (payload: {
+    fromLorryId: string;
+    toLorryId: string;
+    items: { productId: string; quantity: number; freeQuantity?: number }[];
+    exchangeItems?: { productId: string; quantity: number; freeQuantity?: number }[];
+    notes?: string;
+  }) => api.post<{ success: boolean; transferNumber: string }>('/lorries/transfer-stock', payload).then(r => r.data)
 };

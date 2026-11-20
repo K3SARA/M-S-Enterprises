@@ -43,7 +43,8 @@ import {
   Radio,
   Wallet,
   Boxes,
-  Package
+  Package,
+  ArrowLeftRight
 } from 'lucide-react';
 import {
   Customer,
@@ -67,6 +68,7 @@ import { AdminPasscodeModal } from '../components/AdminPasscodeModal';
 import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
 import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal';
 import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
+import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
 
 interface CartItem {
   productId: string;
@@ -186,6 +188,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   // Available Lorry Stock Page State (Dedicated full-screen ultra-clean view)
   const [showStockPage, setShowStockPage] = useState<boolean>(false);
+  const [showExchangeModal, setShowExchangeModal] = useState<boolean>(false);
   const [stockSearch, setStockSearch] = useState<string>('');
   const [stockCategoryFilter, setStockCategoryFilter] = useState<string>('ALL');
   const [stockSortFilter, setStockSortFilter] = useState<'STOCK_DESC' | 'STOCK_ASC' | 'NAME' | 'PRICE'>('STOCK_DESC');
@@ -3612,6 +3615,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition" />
                 </button>
 
+                {/* 0b. Exchange Stock with Another Lorry */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowExchangeModal(true);
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-purple-400 hover:bg-purple-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-purple-100 text-purple-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <ArrowLeftRight className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">Exchange Stock Between Lorries</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-purple-100 text-purple-700">
+                          Transfer
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Transfer or swap items with another lorry on route when stock runs low
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition" />
+                </button>
+
                 {/* 1. Route Stops & Geofenced Sequence */}
                 <button
                   type="button"
@@ -3862,6 +3893,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 title="Refresh Live Floating Stock"
               >
                 <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingStock ? 'animate-spin text-blue-600' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowExchangeModal(true)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-purple-50 hover:bg-purple-100 active:scale-95 text-purple-700 text-xs font-bold transition cursor-pointer border border-purple-200"
+                title="Exchange or transfer stock with another lorry"
+              >
+                <ArrowLeftRight className="w-3.5 h-3.5 text-purple-600" />
+                <span>Exchange</span>
               </button>
 
               <button
@@ -4130,6 +4171,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           </div>
         </div>
       )}
+
+      {/* Lorry Stock Exchange Modal */}
+      <LorryStockExchangeModal
+        isOpen={showExchangeModal}
+        onClose={() => setShowExchangeModal(false)}
+        defaultFromLorryId={selectedLorryId || initialLorryId || user?.lorryId || ''}
+        onSuccess={() => {
+          loadData();
+          setStockPageToast('✓ Stock successfully transferred/exchanged!');
+          setTimeout(() => setStockPageToast(null), 3500);
+        }}
+      />
     </div>
   );
 };

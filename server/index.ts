@@ -4638,6 +4638,387 @@ app.post('/api/lorries/:id/settle', async (req: Request, res: Response) => {
 });
 
 // ========================================================
+// 5.5 LORRY-TO-LORRY STOCK TRANSFERS & MUTUAL EXCHANGES
+// ========================================================
+
+// List recent transfers
+app.get('/api/lorries/transfers', async (req: Request, res: Response) => {
+  try {
+    const { lorryId, limit } = req.query;
+    const where: any = {};
+    if (lorryId && typeof lorryId === 'string') {
+      where.OR = [{ fromLorryId: lorryId }, { toLorryId: lorryId }];
+    }
+
+    const transfers = await prisma.lorryStockTransfer.findMany({
+      where,
+      orderBy: { transferredAt: 'desc' },
+      take: limit ? parseInt(limit as string, 10) : 50,
+      include: {
+        items: true
+      }
+    });
+
+    const lorryIds = Array.from(new Set(transfers.flatMap(t => [t.fromLorryId, t.toLorryId])));
+    const productIds = Array.from(new Set(transfers.flatMap(t => t.items.map(i => i.productId))));
+
+    const [lorries, products] = await Promise.all([
+      prisma.lorry.findMany({
+        where: { id: { in: lorryIds } },
+        select: { id: true, vehicleNumber: true, driverName: true }
+      }),
+      prisma.product.findMany({
+        where: { id: { in: productIds } },
+        select: { id: true, name: true, sku: true, unit: true, unitPrice: true }
+      })
+    ]);
+
+    const lorryMap = new Map(lorries.map(l => [l.id, l]));
+    const productMap = new Map(products.map(p => [p.id, p]));
+
+    const enriched = transfers.map(t => ({
+      ...t,
+      fromLorry: lorryMap.get(t.fromLorryId) || { id: t.fromLorryId, vehicleNumber: 'Unknown', driverName: 'N/A' },
+      toLorry: lorryMap.get(t.toLorryId) || { id: t.toLorryId, vehicleNumber: 'Unknown', driverName: 'N/A' },
+      items: t.items.map(item => ({
+        ...item,
+        product: productMap.get(item.productId) || { id: item.productId, name: 'Unknown', sku: '', unit: 'Unit', unitPrice: 0 }
+      }))
+    }));
+
+    res.json(enriched);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// Execute Lorry-to-Lorry Stock Transfer or Mutual Exchange
+app.post('/api/lorries/transfer-stock', async (req: Request, res: Response) => {
+  const { fromLorryId, toLorryId, items, exchangeItems, notes } = req.body;
+
+  if (!fromLorryId || !toLorryId) {
+    return res.status(400).json({ error: 'Both Source and Destination lorries are required.' });
+  }
+
+  if (fromLorryId === toLorryId) {
+    return res.status(400).json({ error: 'Cannot transfer items to the same lorry.' });
+  }
+
+  const forwardItems = Array.isArray(items) ? items.filter((i: any) => (parseInt(i.quantity, 10) || 0) > 0 || (parseInt(i.freeQuantity, 10) || 0) > 0) : [];
+  const reverseItems = Array.isArray(exchangeItems) ? exchangeItems.filter((i: any) => (parseInt(i.quantity, 10) || 0) > 0 || (parseInt(i.freeQuantity, 10) || 0) > 0) : [];
+
+  if (forwardItems.length === 0 && reverseItems.length === 0) {
+    return res.status(400).json({ error: 'At least one item must be selected for transfer or exchange.' });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const [fromLorry, toLorry] = await Promise.all([
+        tx.lorry.findUniqueOrThrow({ where: { id: fromLorryId }, include: { lorryStocks: true } }),
+        tx.lorry.findUniqueOrThrow({ where: { id: toLorryId }, include: { lorryStocks: true } })
+      ]);
+
+      const fromStockMap = new Map(fromLorry.lorryStocks.map(s => [s.productId, s]));
+      const toStockMap = new Map(toLorry.lorryStocks.map(s => [s.productId, s]));
+
+      // 1. Verify forward stock (From -> To)
+      for (const item of forwardItems) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+        const available = fromStockMap.get(item.productId);
+        const availQty = available?.quantity || 0;
+        const availFreeQty = available?.freeQuantity || 0;
+
+        const prod = await tx.product.findUnique({ where: { id: item.productId } });
+        const prodName = prod?.name || 'Selected product';
+
+        if (qty > availQty) {
+          throw new Error(`Lorry ${fromLorry.vehicleNumber} only has ${availQty} units of "${prodName}" available (requested ${qty}).`);
+        }
+        if (freeQty > availFreeQty) {
+          throw new Error(`Lorry ${fromLorry.vehicleNumber} only has ${availFreeQty} free units of "${prodName}" available (requested ${freeQty}).`);
+        }
+      }
+
+      // 2. Verify reverse stock (To -> From Exchange)
+      for (const item of reverseItems) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+        const available = toStockMap.get(item.productId);
+        const availQty = available?.quantity || 0;
+        const availFreeQty = available?.freeQuantity || 0;
+
+        const prod = await tx.product.findUnique({ where: { id: item.productId } });
+        const prodName = prod?.name || 'Selected product';
+
+        if (qty > availQty) {
+          throw new Error(`Lorry ${toLorry.vehicleNumber} only has ${availQty} units of "${prodName}" available (requested ${qty}).`);
+        }
+        if (freeQty > availFreeQty) {
+          throw new Error(`Lorry ${toLorry.vehicleNumber} only has ${availFreeQty} free units of "${prodName}" available (requested ${freeQty}).`);
+        }
+      }
+
+      // Generate Transfer Number (e.g. TRF-20261120-001)
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const countToday = await tx.lorryStockTransfer.count({
+        where: { createdAt: { gte: new Date(new Date().setHours(0, 0, 0, 0)) } }
+      });
+      const transferNumber = `TRF-${dateStr}-${(countToday + 1).toString().padStart(3, '0')}`;
+
+      // Create Transfer Header Record
+      const transfer = await tx.lorryStockTransfer.create({
+        data: {
+          transferNumber,
+          fromLorryId,
+          toLorryId,
+          notes: notes?.trim() || null,
+          transferredAt: new Date()
+        }
+      });
+
+      // Find active daily loadings
+      const [fromLoading, toLoading] = await Promise.all([
+        tx.lorryLoading.findFirst({
+          where: { lorryId: fromLorryId, status: { in: ['LOADED', 'IN_TRANSIT'] } },
+          orderBy: { createdAt: 'desc' }
+        }),
+        tx.lorryLoading.findFirst({
+          where: { lorryId: toLorryId, status: { in: ['LOADED', 'IN_TRANSIT'] } },
+          orderBy: { createdAt: 'desc' }
+        })
+      ]);
+
+      // 3. Apply Forward Transfers (fromLorry -> toLorry)
+      for (const item of forwardItems) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+
+        // Decrement From Lorry
+        await tx.lorryStock.update({
+          where: { lorryId_productId: { lorryId: fromLorryId, productId: item.productId } },
+          data: {
+            quantity: { decrement: qty },
+            freeQuantity: { decrement: freeQty }
+          }
+        });
+
+        // Increment To Lorry
+        await tx.lorryStock.upsert({
+          where: { lorryId_productId: { lorryId: toLorryId, productId: item.productId } },
+          update: {
+            quantity: { increment: qty },
+            freeQuantity: { increment: freeQty }
+          },
+          create: {
+            lorryId: toLorryId,
+            productId: item.productId,
+            quantity: qty,
+            freeQuantity: freeQty
+          }
+        });
+
+        // Record Transfer Item
+        await tx.lorryStockTransferItem.create({
+          data: {
+            transferId: transfer.id,
+            productId: item.productId,
+            direction: 'FORWARD',
+            quantity: qty,
+            freeQuantity: freeQty
+          }
+        });
+
+        // Record Stock Movements
+        if (qty > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_TRANSFER',
+              quantity: -qty,
+              isFreeIssue: false,
+              referenceId: transferNumber,
+              notes: `Transferred from ${fromLorry.vehicleNumber} to ${toLorry.vehicleNumber}`
+            }
+          });
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_TRANSFER',
+              quantity: qty,
+              isFreeIssue: false,
+              referenceId: transferNumber,
+              notes: `Received by ${toLorry.vehicleNumber} from ${fromLorry.vehicleNumber}`
+            }
+          });
+        }
+
+        // Adjust active loadings so evening settlement balances
+        if (toLoading) {
+          const existing = await tx.lorryLoadingItem.findFirst({
+            where: { loadingId: toLoading.id, productId: item.productId }
+          });
+          if (existing) {
+            await tx.lorryLoadingItem.update({
+              where: { id: existing.id },
+              data: { loadedQty: { increment: qty }, loadedFreeQty: { increment: freeQty } }
+            });
+          } else {
+            await tx.lorryLoadingItem.create({
+              data: {
+                loadingId: toLoading.id,
+                productId: item.productId,
+                loadedQty: qty,
+                loadedFreeQty: freeQty,
+                soldQty: 0,
+                freeQty: 0,
+                returnedQty: 0,
+                returnedFreeQty: 0,
+                discrepancyQty: 0
+              }
+            });
+          }
+        }
+
+        if (fromLoading) {
+          const existing = await tx.lorryLoadingItem.findFirst({
+            where: { loadingId: fromLoading.id, productId: item.productId }
+          });
+          if (existing) {
+            await tx.lorryLoadingItem.update({
+              where: { id: existing.id },
+              data: {
+                loadedQty: { decrement: Math.min(existing.loadedQty, qty) },
+                loadedFreeQty: { decrement: Math.min(existing.loadedFreeQty, freeQty) }
+              }
+            });
+          }
+        }
+      }
+
+      // 4. Apply Reverse Exchange Transfers (toLorry -> fromLorry)
+      for (const item of reverseItems) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+
+        // Decrement To Lorry
+        await tx.lorryStock.update({
+          where: { lorryId_productId: { lorryId: toLorryId, productId: item.productId } },
+          data: {
+            quantity: { decrement: qty },
+            freeQuantity: { decrement: freeQty }
+          }
+        });
+
+        // Increment From Lorry
+        await tx.lorryStock.upsert({
+          where: { lorryId_productId: { lorryId: fromLorryId, productId: item.productId } },
+          update: {
+            quantity: { increment: qty },
+            freeQuantity: { increment: freeQty }
+          },
+          create: {
+            lorryId: fromLorryId,
+            productId: item.productId,
+            quantity: qty,
+            freeQuantity: freeQty
+          }
+        });
+
+        // Record Transfer Item
+        await tx.lorryStockTransferItem.create({
+          data: {
+            transferId: transfer.id,
+            productId: item.productId,
+            direction: 'REVERSE',
+            quantity: qty,
+            freeQuantity: freeQty
+          }
+        });
+
+        // Record Stock Movements
+        if (qty > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_TRANSFER',
+              quantity: -qty,
+              isFreeIssue: false,
+              referenceId: transferNumber,
+              notes: `Exchange item sent from ${toLorry.vehicleNumber} to ${fromLorry.vehicleNumber}`
+            }
+          });
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_TRANSFER',
+              quantity: qty,
+              isFreeIssue: false,
+              referenceId: transferNumber,
+              notes: `Exchange item received by ${fromLorry.vehicleNumber} from ${toLorry.vehicleNumber}`
+            }
+          });
+        }
+
+        // Adjust active loadings
+        if (fromLoading) {
+          const existing = await tx.lorryLoadingItem.findFirst({
+            where: { loadingId: fromLoading.id, productId: item.productId }
+          });
+          if (existing) {
+            await tx.lorryLoadingItem.update({
+              where: { id: existing.id },
+              data: { loadedQty: { increment: qty }, loadedFreeQty: { increment: freeQty } }
+            });
+          } else {
+            await tx.lorryLoadingItem.create({
+              data: {
+                loadingId: fromLoading.id,
+                productId: item.productId,
+                loadedQty: qty,
+                loadedFreeQty: freeQty,
+                soldQty: 0,
+                freeQty: 0,
+                returnedQty: 0,
+                returnedFreeQty: 0,
+                discrepancyQty: 0
+              }
+            });
+          }
+        }
+
+        if (toLoading) {
+          const existing = await tx.lorryLoadingItem.findFirst({
+            where: { loadingId: toLoading.id, productId: item.productId }
+          });
+          if (existing) {
+            await tx.lorryLoadingItem.update({
+              where: { id: existing.id },
+              data: {
+                loadedQty: { decrement: Math.min(existing.loadedQty, qty) },
+                loadedFreeQty: { decrement: Math.min(existing.loadedFreeQty, freeQty) }
+              }
+            });
+          }
+        }
+      }
+
+      return {
+        success: true,
+        transferNumber,
+        transferId: transfer.id,
+        forwardCount: forwardItems.length,
+        reverseCount: reverseItems.length
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// ========================================================
 // 6. CUSTOMER & CLIENT DIRECTORY
 // ========================================================
 
