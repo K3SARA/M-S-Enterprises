@@ -1,4 +1,4 @@
-# Deploying Distributor Pro on Railway
+# Deploying M&S Enterprises on Railway
 
 This guide walks you through hosting your distribution system on **[Railway](https://railway.app/)** with a cloud PostgreSQL database and high availability.
 
@@ -32,7 +32,7 @@ The Express server automatically:
 
 ### Step 1: Your GitHub Repository is Ready
 Your repository is already pushed and up-to-date:
-- **Repo URL:** `https://github.com/K3SARA/Distributor-pro-with-Map.git`
+- **Repo URL:** `https://github.com/K3SARA/M-S-Enterprises.git`
 - `prepare-prisma.js` is automatically configured to detect Railway's PostgreSQL `DATABASE_URL` at runtime.
 
 ---
@@ -42,7 +42,7 @@ Your repository is already pushed and up-to-date:
 1. Go to **[Railway.app](https://railway.app/)** and sign in with your GitHub account.
 2. Click **+ New Project**.
 3. Select **Deploy from GitHub repo**.
-4. Choose **`K3SARA/Distributor-pro-with-Map`**.
+4. Choose **`K3SARA/M-S-Enterprises`**.
 
 ---
 
@@ -56,7 +56,7 @@ Your repository is already pushed and up-to-date:
 
 ### Step 4: Link PostgreSQL to Your Web App Service
 
-1. Click on your **Web Service** card (`Distributor-pro-with-Map`).
+1. Click on your **Web Service** card (`M-S-Enterprises`).
 2. Navigate to the **Variables** tab.
 3. Click **+ Add Variable Reference**.
 4. Select `DATABASE_URL` from the PostgreSQL service dropdown.
@@ -69,7 +69,7 @@ Your repository is already pushed and up-to-date:
 
 1. In your Web Service settings on Railway, go to the **Settings** tab.
 2. Scroll down to the **Networking** section.
-3. Click **Generate Domain** (e.g. `distributor-pro-with-map.up.railway.app`).
+3. Click **Generate Domain** (e.g. `ms-enterprises.up.railway.app`).
 4. Wait for the deploy status to show **Active (Healthy)**.
 5. Open your public URL in any browser!
 
