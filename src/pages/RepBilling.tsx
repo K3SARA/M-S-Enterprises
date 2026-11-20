@@ -1261,32 +1261,6 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         {/* ======================================================== */}
         {currentStep === 1 && (
           <div className="space-y-3">
-            {/* Ultra-neat Quick Mobile Action Pills: Direct Outstanding Collection & Direct Returns Collection */}
-            <div className="grid grid-cols-2 gap-2">
-              <button
-                type="button"
-                onClick={() => setShowDirectCollectionModal(true)}
-                className="py-2.5 px-3 rounded-2xl bg-white border border-slate-200/90 hover:border-emerald-300 hover:bg-emerald-50/30 text-slate-800 text-xs font-bold flex items-center justify-center gap-2 transition shadow-2xs active:scale-[0.98] cursor-pointer"
-                title="Direct Outstanding Collection without a sales bill"
-              >
-                <div className="w-5 h-5 rounded-lg bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0">
-                  <Wallet className="w-3 h-3 stroke-[2.5]" />
-                </div>
-                <span className="truncate">Collect Due</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowDirectReturnsModal(true)}
-                className="py-2.5 px-3 rounded-2xl bg-white border border-slate-200/90 hover:border-amber-300 hover:bg-amber-50/30 text-slate-800 text-xs font-bold flex items-center justify-center gap-2 transition shadow-2xs active:scale-[0.98] cursor-pointer"
-                title="Direct Returns Collection without a sales bill"
-              >
-                <div className="w-5 h-5 rounded-lg bg-amber-100 text-amber-700 flex items-center justify-center shrink-0">
-                  <RotateCcw className="w-3 h-3 stroke-[2.5]" />
-                </div>
-                <span className="truncate">Collect Returns</span>
-              </button>
-            </div>
             {/* Rep Sales Target Goal Widget */}
             {user?.monthlyTarget && user.monthlyTarget > 0 ? (
               <div className="bg-gradient-to-r from-blue-50 to-indigo-50 border border-blue-100 rounded-2xl p-2.5 flex items-center justify-between text-xs shadow-2xs">
