@@ -331,8 +331,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const handleBarcodeScanned = async (code: string): Promise<boolean> => {
     const cleanCode = code.trim().toLowerCase();
 
-    // 1. Try instant local match in loaded products
-    let matchedProduct = products.find(
+    // 1. Try instant local match in lorry-loaded products only
+    let matchedProduct = lorryProducts.find(
       p =>
         (p.sku && p.sku.toLowerCase() === cleanCode) ||
         (p.barcode && p.barcode.toLowerCase() === cleanCode) ||
@@ -664,6 +664,15 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     return map;
   }, [selectedLorry]);
 
+  // Only show products that are physically loaded on this lorry (stock > 0)
+  const lorryProducts = useMemo(() => {
+    if (lorryStockMap.size === 0) return [];
+    return products.filter(p => {
+      const info = lorryStockMap.get(p.id);
+      return info !== undefined && info.stock > 0;
+    });
+  }, [products, lorryStockMap]);
+
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
@@ -730,28 +739,28 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     );
   }, [routeOptimization, customerSearch]);
 
-  // Distinct Brands
+  // Distinct Brands (only from lorry-loaded items)
   const availableBrands = useMemo(() => {
     const brands = new Set<string>();
-    products.forEach(p => {
+    lorryProducts.forEach(p => {
       if (p.category && p.category.trim()) {
         brands.add(p.category.trim());
       }
     });
     return Array.from(brands).sort();
-  }, [products]);
+  }, [lorryProducts]);
 
-  // Brand products
+  // Brand products (only lorry-loaded)
   const brandProducts = useMemo(() => {
     if (!selectedBrand) return [];
-    return products.filter(p => {
+    return lorryProducts.filter(p => {
       const matchBrand = p.category.toLowerCase() === selectedBrand.toLowerCase();
       if (!matchBrand) return false;
       if (!itemSearch.trim()) return true;
       const q = itemSearch.toLowerCase();
       return p.name.toLowerCase().includes(q) || p.sku.toLowerCase().includes(q);
     });
-  }, [products, selectedBrand, itemSearch]);
+  }, [lorryProducts, selectedBrand, itemSearch]);
 
   // Cart Management
   const addToCart = (product: Product, qty: number = 1) => {
@@ -2056,9 +2065,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         {/* ======================================================== */}
         {currentStep === 3 && (
           <div className="space-y-3">
+            {availableBrands.length === 0 ? (
+              <div className="bg-amber-50 border border-amber-200 rounded-2xl p-6 text-center space-y-1">
+                <Truck className="w-8 h-8 text-amber-400 mx-auto mb-2" />
+                <p className="text-sm font-bold text-amber-800">No items loaded on this lorry</p>
+                <p className="text-xs text-amber-600">The morning lorry load has not been done yet, or no stock is available on this vehicle.</p>
+              </div>
+            ) : (
             <div className="grid grid-cols-2 gap-2.5">
               {availableBrands.map(brand => {
-                const count = products.filter(p => p.category.toLowerCase() === brand.toLowerCase()).length;
+                const count = lorryProducts.filter(p => p.category.toLowerCase() === brand.toLowerCase()).length;
                 return (
                   <button
                     key={brand}
@@ -2081,6 +2097,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 );
               })}
             </div>
+            )}
 
             <div className="flex items-center justify-between pt-2">
               <button
