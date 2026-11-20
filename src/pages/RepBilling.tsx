@@ -1460,30 +1460,30 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
             {/* Smart Route Intelligence Strip & View Switcher */}
             {routeOptimization && (
-              <div className="p-3 bg-slate-200/90 border border-slate-300 rounded-2xl space-y-2.5 shadow-xs">
+              <div className="p-3 bg-black border border-slate-800 rounded-2xl space-y-2.5 shadow-md text-white">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5 min-w-0">
-                    <Compass className="w-4 h-4 text-blue-600 shrink-0" />
-                    <span className="font-bold text-slate-800 truncate">
+                    <Compass className="w-4 h-4 text-blue-400 shrink-0" />
+                    <span className="font-bold text-white truncate">
                       {routeOptimization.routeName || routeOptimization.routeCode}
                     </span>
-                    <span className="text-slate-400">•</span>
-                    <span className="font-bold text-blue-700">
+                    <span className="text-slate-500">•</span>
+                    <span className="font-bold text-blue-400">
                       {routeOptimization.visitedCount} / {routeOptimization.totalCount} Visited
                     </span>
                   </div>
 
                   {routeOptimization.savedDistanceKm > 0 && (
-                    <span className="text-[10px] font-bold text-emerald-800 bg-emerald-100/80 border border-emerald-300/80 px-2 py-0.5 rounded-lg shrink-0">
+                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-lg shrink-0">
                       Saved {routeOptimization.savedDistanceKm} km ({routeOptimization.savedPercentage}% Fuel)
                     </span>
                   )}
                 </div>
 
                 {/* Progress bar */}
-                <div className="w-full bg-slate-300/80 h-1.5 rounded-full overflow-hidden">
+                <div className="w-full bg-slate-800 h-1.5 rounded-full overflow-hidden">
                   <div
-                    className="bg-emerald-500 h-full rounded-full transition-all duration-300"
+                    className="bg-emerald-400 h-full rounded-full transition-all duration-300"
                     style={{
                       width: `${
                         routeOptimization.totalCount > 0
@@ -1502,10 +1502,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       routeViewMode === 'SMART_SEQUENCE'
                         ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
                     }`}
                   >
-                    <Sparkles className="w-3.5 h-3.5" />
+                    <Sparkles className="w-3.5 h-3.5 text-blue-300" />
                     <span>Optimized Route</span>
                   </button>
 
@@ -1515,10 +1515,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
                       routeViewMode === 'ALL_CUSTOMERS'
                         ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
+                        : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
                     }`}
                   >
-                    <Users className="w-3.5 h-3.5" />
+                    <Users className="w-3.5 h-3.5 text-slate-300" />
                     <span>All Stores ({customers.length})</span>
                   </button>
                 </div>
