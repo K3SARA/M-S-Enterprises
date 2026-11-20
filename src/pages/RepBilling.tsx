@@ -41,7 +41,9 @@ import {
   MoreHorizontal,
   ChevronRight,
   Radio,
-  Wallet
+  Wallet,
+  Boxes,
+  Package
 } from 'lucide-react';
 import {
   Customer,
@@ -181,6 +183,14 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [routeStatus, setRouteStatus] = useState<RouteStatusResult | null>(null);
   const [showSkippedModal, setShowSkippedModal] = useState<boolean>(false);
   const [autoCheckinToast, setAutoCheckinToast] = useState<string | null>(null);
+
+  // Available Lorry Stock Page State (Dedicated full-screen ultra-clean view)
+  const [showStockPage, setShowStockPage] = useState<boolean>(false);
+  const [stockSearch, setStockSearch] = useState<string>('');
+  const [stockCategoryFilter, setStockCategoryFilter] = useState<string>('ALL');
+  const [stockSortFilter, setStockSortFilter] = useState<'STOCK_DESC' | 'STOCK_ASC' | 'NAME' | 'PRICE'>('STOCK_DESC');
+  const [stockPageToast, setStockPageToast] = useState<string | null>(null);
+  const [isRefreshingStock, setIsRefreshingStock] = useState<boolean>(false);
 
   // Next Stop Hero Card Minimized State (toggled via ••• button next to Next Stop badge)
   const [isNextStopMinimized, setIsNextStopMinimized] = useState<boolean>(() => {
@@ -672,6 +682,155 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       return info !== undefined && info.stock > 0;
     });
   }, [products, lorryStockMap]);
+
+  // Available Lorry Stock Stats for Dedicated Stock Page
+  const stockPageStats = useMemo(() => {
+    let totalPaidQty = 0;
+    let totalFreeQty = 0;
+    let totalValuation = 0;
+
+    lorryProducts.forEach(p => {
+      const s = lorryStockMap.get(p.id);
+      const paid = s?.stock || 0;
+      const free = s?.freeStock || 0;
+      totalPaidQty += paid;
+      totalFreeQty += free;
+      totalValuation += paid * p.unitPrice;
+    });
+
+    return {
+      itemCount: lorryProducts.length,
+      totalPaidQty,
+      totalFreeQty,
+      totalValuation
+    };
+  }, [lorryProducts, lorryStockMap]);
+
+  // Available Stock Categories for filtering
+  const stockCategories = useMemo(() => {
+    const map = new Map<string, number>();
+    lorryProducts.forEach(p => {
+      const cat = p.category?.trim() || 'General';
+      map.set(cat, (map.get(cat) || 0) + 1);
+    });
+    return Array.from(map.entries()).map(([name, count]) => ({ name, count }));
+  }, [lorryProducts]);
+
+  // Filtered & Sorted Stock for the Dedicated Stock Page
+  const filteredStockProducts = useMemo(() => {
+    return lorryProducts
+      .filter(p => {
+        if (stockCategoryFilter !== 'ALL' && p.category.toLowerCase() !== stockCategoryFilter.toLowerCase()) {
+          return false;
+        }
+        if (stockSearch.trim()) {
+          const q = stockSearch.toLowerCase();
+          const matchName = p.name.toLowerCase().includes(q);
+          const matchSku = p.sku.toLowerCase().includes(q);
+          const matchBarcode = p.barcode ? p.barcode.toLowerCase().includes(q) : false;
+          const matchCategory = p.category.toLowerCase().includes(q);
+          return matchName || matchSku || matchBarcode || matchCategory;
+        }
+        return true;
+      })
+      .sort((a, b) => {
+        const aStock = lorryStockMap.get(a.id)?.stock || 0;
+        const bStock = lorryStockMap.get(b.id)?.stock || 0;
+        if (stockSortFilter === 'STOCK_DESC') return bStock - aStock;
+        if (stockSortFilter === 'STOCK_ASC') return aStock - bStock;
+        if (stockSortFilter === 'PRICE') return b.unitPrice - a.unitPrice;
+        return a.name.localeCompare(b.name);
+      });
+  }, [lorryProducts, lorryStockMap, stockCategoryFilter, stockSearch, stockSortFilter]);
+
+  // Refresh Lorry Stock Live
+  const handleRefreshStock = async () => {
+    setIsRefreshingStock(true);
+    try {
+      await loadData();
+      setStockPageToast('🟢 Floating stock refreshed from server!');
+      setTimeout(() => setStockPageToast(null), 3000);
+    } catch {
+      setStockPageToast('⚠️ Failed to refresh stock.');
+      setTimeout(() => setStockPageToast(null), 3000);
+    } finally {
+      setIsRefreshingStock(false);
+    }
+  };
+
+  // Print Stock Sheet for Lorry
+  const handlePrintStock = () => {
+    const printWindow = window.open('', '_blank');
+    if (!printWindow) {
+      alert('Pop-up blocked. Please allow pop-ups to print stock list.');
+      return;
+    }
+    const html = `
+      <!DOCTYPE html>
+      <html>
+        <head>
+          <title>Lorry Stock - ${selectedLorry?.vehicleNumber || 'Lorry'}</title>
+          <style>
+            body { font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif; padding: 16px; font-size: 12px; color: #0f172a; }
+            h2 { margin: 0 0 4px 0; font-size: 16px; }
+            p { margin: 2px 0 8px 0; color: #475569; }
+            table { width: 100%; border-collapse: collapse; margin-top: 12px; }
+            th, td { border-bottom: 1px solid #cbd5e1; padding: 6px 4px; text-align: left; }
+            th { background: #f1f5f9; font-size: 11px; text-transform: uppercase; }
+            .num { text-align: right; font-family: monospace; }
+            .total { font-weight: bold; background: #e2e8f0; }
+          </style>
+        </head>
+        <body>
+          <h2>M&S Enterprises - Lorry Stock Available to Bill</h2>
+          <p>Vehicle: <strong>${selectedLorry?.vehicleNumber || 'Lorry'}</strong> | Driver: <strong>${selectedLorry?.driverName || 'Driver'}</strong></p>
+          <p>Date: ${new Date().toLocaleString('en-GB')}</p>
+          <table>
+            <thead>
+              <tr>
+                <th>#</th>
+                <th>Product</th>
+                <th>Category</th>
+                <th class="num">Unit Price</th>
+                <th class="num">Available</th>
+                <th class="num">Free Stock</th>
+                <th class="num">Valuation</th>
+              </tr>
+            </thead>
+            <tbody>
+              ${filteredStockProducts.map((p, idx) => {
+                const s = lorryStockMap.get(p.id);
+                const paid = s?.stock || 0;
+                const free = s?.freeStock || 0;
+                return `
+                  <tr>
+                    <td>${idx + 1}</td>
+                    <td><strong>${p.name}</strong><br/><span style="color:#64748b;font-size:10px">${p.sku}</span></td>
+                    <td>${p.category}</td>
+                    <td class="num">${formatMoney(p.unitPrice)}</td>
+                    <td class="num" style="font-weight:bold;color:#047857">${paid} ${p.unit}</td>
+                    <td class="num">${free > 0 ? `${free} Free` : '-'}</td>
+                    <td class="num">${formatMoney(paid * p.unitPrice)}</td>
+                  </tr>
+                `;
+              }).join('')}
+              <tr class="total">
+                <td colspan="4">TOTALS (${stockPageStats.itemCount} SKUs)</td>
+                <td class="num">${stockPageStats.totalPaidQty} Units</td>
+                <td class="num">${stockPageStats.totalFreeQty} Free</td>
+                <td class="num">${formatMoney(stockPageStats.totalValuation)}</td>
+              </tr>
+            </tbody>
+          </table>
+          <script>
+            window.onload = function() { window.print(); }
+          </script>
+        </body>
+      </html>
+    `;
+    printWindow.document.write(html);
+    printWindow.document.close();
+  };
 
   const selectedCustomer = useMemo(() => {
     return customers.find(c => c.id === selectedCustomerId) || null;
@@ -1172,8 +1331,22 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           </div>
         </div>
 
-        {/* Right: Only 3 Ergonomic Touch Actions */}
+        {/* Right: Only 4 Ergonomic Touch Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Quick Available Stock to Bill Button */}
+          <button
+            type="button"
+            onClick={() => setShowStockPage(true)}
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer border bg-slate-100 text-slate-700 border-slate-200/80 hover:bg-slate-200"
+            title="View Available Stock to Bill"
+          >
+            <Boxes className="w-3.5 h-3.5 text-blue-600" />
+            <span className="hidden xs:inline sm:inline">Stock</span>
+            <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-blue-100 text-blue-700">
+              {lorryProducts.length}
+            </span>
+          </button>
+
           {/* Quick Barcode Scanner Icon */}
           <button
             type="button"
@@ -3411,6 +3584,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
               {/* Navigation & Operational Hub Action List */}
               <div className="space-y-2">
+                {/* 0. Available Stock on Lorry to Bill */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowStockPage(true);
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-blue-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <Boxes className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">Available Stock to Bill</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-700">
+                          {lorryProducts.length} Items Loaded
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        View all floating items, quantities, and prices loaded on {selectedLorry?.vehicleNumber || 'this lorry'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition" />
+                </button>
+
                 {/* 1. Route Stops & Geofenced Sequence */}
                 <button
                   type="button"
@@ -3611,6 +3812,323 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           customer={activeReceiptPayment.customer || selectedCustomer}
           onClose={() => setActiveReceiptPayment(null)}
         />
+      )}
+
+      {/* ======================================================== */}
+      {/* ULTRA-CLEAN FULL PAGE: AVAILABLE STOCK TO BILL */}
+      {/* ======================================================== */}
+      {showStockPage && (
+        <div className="fixed inset-0 z-50 bg-[#F1F3F6] flex flex-col overflow-hidden animate-in fade-in duration-150">
+          {/* Toast Notification */}
+          {stockPageToast && (
+            <div className="fixed top-4 left-1/2 -translate-x-1/2 z-50 px-4 py-2 bg-slate-900 text-white rounded-xl shadow-lg text-xs font-semibold flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+              <span>{stockPageToast}</span>
+            </div>
+          )}
+
+          {/* Sticky Header Bar */}
+          <header className="bg-white border-b border-slate-200 px-4 py-3 shrink-0 flex items-center justify-between gap-3 shadow-2xs">
+            <div className="flex items-center gap-2.5 min-w-0">
+              <button
+                type="button"
+                onClick={() => setShowStockPage(false)}
+                className="flex items-center gap-1.5 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 text-slate-700 text-xs font-bold transition cursor-pointer border border-slate-200"
+              >
+                <ArrowLeft className="w-3.5 h-3.5" />
+                <span>Back</span>
+              </button>
+
+              <div className="min-w-0">
+                <div className="flex items-center gap-2 flex-wrap">
+                  <h1 className="text-sm sm:text-base font-extrabold text-slate-900 tracking-tight leading-tight truncate">
+                    Available Stock to Bill
+                  </h1>
+                  <span className="text-[10px] font-mono font-bold px-2 py-0.5 rounded-md bg-blue-50 text-blue-700 border border-blue-200 shrink-0">
+                    {selectedLorry?.vehicleNumber || 'Route Lorry'}
+                  </span>
+                </div>
+                <p className="text-[11px] text-slate-500 font-medium truncate">
+                  {selectedLorry?.route ? `${selectedLorry.route.name} • ` : ''}Driver: {selectedLorry?.driverName || 'Assigned Driver'}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-1.5 shrink-0">
+              <button
+                type="button"
+                onClick={handleRefreshStock}
+                disabled={isRefreshingStock}
+                className="p-2 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 transition cursor-pointer border border-slate-200"
+                title="Refresh Live Floating Stock"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${isRefreshingStock ? 'animate-spin text-blue-600' : ''}`} />
+              </button>
+
+              <button
+                type="button"
+                onClick={handlePrintStock}
+                className="hidden sm:flex items-center gap-1 px-3 py-1.5 rounded-xl bg-slate-100 hover:bg-slate-200 active:scale-95 text-slate-700 text-xs font-bold transition cursor-pointer border border-slate-200"
+                title="Print Lorry Stock Inventory Sheet"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowStockPage(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-800 flex items-center justify-center text-sm font-bold transition cursor-pointer"
+                aria-label="Close Stock View"
+              >
+                ✕
+              </button>
+            </div>
+          </header>
+
+          {/* Scrollable Content */}
+          <div className="flex-1 overflow-y-auto p-3 sm:p-5 max-w-4xl w-full mx-auto space-y-4">
+            {/* 4 KPI Summary Cards */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2.5">
+              <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Loaded Items
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-extrabold text-slate-900 tracking-tight">
+                    {stockPageStats.itemCount}
+                  </span>
+                  <span className="text-xs font-bold text-slate-400">SKUs</span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Available Paid
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-extrabold text-emerald-600 tracking-tight">
+                    {stockPageStats.totalPaidQty}
+                  </span>
+                  <span className="text-xs font-bold text-emerald-700">Units</span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Free Issue Stock
+                </span>
+                <div className="flex items-baseline gap-1">
+                  <span className="text-xl font-extrabold text-blue-600 tracking-tight">
+                    {stockPageStats.totalFreeQty}
+                  </span>
+                  <span className="text-xs font-bold text-blue-700">Free</span>
+                </div>
+              </div>
+
+              <div className="bg-white rounded-2xl p-3 border border-slate-200 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block mb-0.5">
+                  Lorry Valuation
+                </span>
+                <div className="text-base sm:text-lg font-extrabold text-slate-900 tracking-tight truncate">
+                  {formatMoney(stockPageStats.totalValuation)}
+                </div>
+              </div>
+            </div>
+
+            {/* Filter & Search Bar */}
+            <div className="bg-white rounded-2xl border border-slate-200 p-3 shadow-2xs space-y-2.5">
+              <div className="flex flex-col sm:flex-row gap-2">
+                {/* Search Box */}
+                <div className="relative flex-1">
+                  <Search className="w-4 h-4 absolute left-3.5 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={stockSearch}
+                    onChange={e => setStockSearch(e.target.value)}
+                    placeholder="Search by product name, SKU or barcode..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-semibold text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {stockSearch && (
+                    <button
+                      type="button"
+                      onClick={() => setStockSearch('')}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold w-4 h-4 flex items-center justify-center cursor-pointer"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+
+                {/* Sort Dropdown */}
+                <div className="shrink-0 flex items-center gap-1.5">
+                  <select
+                    value={stockSortFilter}
+                    onChange={e => setStockSortFilter(e.target.value as any)}
+                    className="bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-bold text-slate-700 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                  >
+                    <option value="STOCK_DESC">Highest Stock First</option>
+                    <option value="STOCK_ASC">Lowest Stock First</option>
+                    <option value="PRICE">Price (High to Low)</option>
+                    <option value="NAME">Name (A-Z)</option>
+                  </select>
+                </div>
+              </div>
+
+              {/* Brand / Category Chips */}
+              {stockCategories.length > 1 && (
+                <div className="flex items-center gap-1.5 overflow-x-auto pb-0.5 scrollbar-none">
+                  <button
+                    type="button"
+                    onClick={() => setStockCategoryFilter('ALL')}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
+                      stockCategoryFilter === 'ALL'
+                        ? 'bg-slate-900 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                    }`}
+                  >
+                    All Items ({lorryProducts.length})
+                  </button>
+                  {stockCategories.map(cat => (
+                    <button
+                      key={cat.name}
+                      type="button"
+                      onClick={() => setStockCategoryFilter(cat.name)}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
+                        stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      <span>{cat.name}</span>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
+                        stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
+                          ? 'bg-white/20 text-white'
+                          : 'bg-slate-200 text-slate-700'
+                      }`}>
+                        {cat.count}
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* Product Stock Cards List */}
+            {filteredStockProducts.length === 0 ? (
+              <div className="bg-white rounded-2xl border border-dashed border-slate-200 p-8 text-center space-y-2">
+                <Boxes className="w-10 h-10 text-slate-300 mx-auto" />
+                <h3 className="text-sm font-bold text-slate-800">
+                  {stockSearch || stockCategoryFilter !== 'ALL'
+                    ? 'No matching products found'
+                    : 'No Stock Loaded on This Lorry'}
+                </h3>
+                <p className="text-xs text-slate-500 max-w-sm mx-auto">
+                  {stockSearch || stockCategoryFilter !== 'ALL'
+                    ? 'Try adjusting your search query or brand filter.'
+                    : 'Use the Morning Lorry Load module to dispatch items to this lorry before billing.'}
+                </p>
+                {(stockSearch || stockCategoryFilter !== 'ALL') && (
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setStockSearch('');
+                      setStockCategoryFilter('ALL');
+                    }}
+                    className="mt-2 px-3 py-1.5 rounded-xl bg-blue-50 text-blue-700 text-xs font-bold hover:bg-blue-100 transition"
+                  >
+                    Reset Filters
+                  </button>
+                )}
+              </div>
+            ) : (
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                {filteredStockProducts.map(product => {
+                  const s = lorryStockMap.get(product.id);
+                  const paid = s?.stock || 0;
+                  const free = s?.freeStock || 0;
+                  const hasScheme = (product.freeRatioBuy || 0) > 0 && (product.freeRatioGet || 0) > 0;
+                  const isLow = paid > 0 && paid <= (product.minStockAlert || 10);
+                  const cartItem = cart.find(c => c.productId === product.id);
+
+                  return (
+                    <div
+                      key={product.id}
+                      className="bg-white rounded-2xl border border-slate-200/90 p-3.5 hover:border-slate-300 transition shadow-2xs flex flex-col justify-between space-y-3"
+                    >
+                      <div className="space-y-1.5">
+                        {/* Top meta tags */}
+                        <div className="flex items-center justify-between gap-2">
+                          <span className="font-mono text-[10px] font-bold text-slate-500 bg-slate-100 px-2 py-0.5 rounded-md">
+                            {product.sku}
+                          </span>
+                          <span className="text-[10px] font-bold text-blue-700 bg-blue-50 border border-blue-200/60 px-2 py-0.5 rounded-md">
+                            {product.category}
+                          </span>
+                        </div>
+
+                        {/* Product Title */}
+                        <h4 className="text-sm font-bold text-slate-900 leading-snug">
+                          {product.name}
+                        </h4>
+
+                        {/* Price & Unit & Scheme */}
+                        <div className="flex items-center gap-2 flex-wrap text-xs">
+                          <span className="font-extrabold text-slate-900">
+                            {formatMoney(product.unitPrice)}
+                          </span>
+                          <span className="text-slate-400 font-medium">/ {product.unit}</span>
+                          {hasScheme && (
+                            <span className="text-[10px] font-bold text-purple-700 bg-purple-50 border border-purple-200/80 px-1.5 py-0.2 rounded-md">
+                              Buy {product.freeRatioBuy} + {product.freeRatioGet} Free
+                            </span>
+                          )}
+                        </div>
+                      </div>
+
+                      {/* Stock Pill & Action Row */}
+                      <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
+                        <div className="flex items-center gap-1.5 flex-wrap">
+                          <div className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${
+                            isLow
+                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                          }`}>
+                            <span className={`w-2 h-2 rounded-full ${isLow ? 'bg-amber-500' : 'bg-emerald-500'}`} />
+                            <span>{paid} {product.unit}</span>
+                          </div>
+
+                          {free > 0 && (
+                            <span className="text-xs font-bold text-blue-700 bg-blue-50 border border-blue-200 px-2 py-1 rounded-xl">
+                              +{free} Free
+                            </span>
+                          )}
+                        </div>
+
+                        {/* Action: Add to Cart if customer selected, or Select to Bill */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            addToCart(product, 1);
+                            setStockPageToast(`✓ Added 1x "${product.name}" to cart`);
+                            setTimeout(() => setStockPageToast(null), 2500);
+                          }}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs ${
+                            cartItem
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                          }`}
+                        >
+                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                          <span>{cartItem ? `In Cart (${cartItem.quantity})` : 'Add to Bill'}</span>
+                        </button>
+                      </div>
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
       )}
     </div>
   );
