@@ -865,3 +865,4 @@ export const LorryStockExchangeModal: React.FC<LorryStockExchangeModalProps> = (
     </div>
   );
 };
+

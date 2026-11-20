@@ -44,7 +44,8 @@ import {
   Wallet,
   Boxes,
   Package,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Lock
 } from 'lucide-react';
 import {
   Customer,
@@ -114,6 +115,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   // Step 1: Customer
   const [customerSearch, setCustomerSearch] = useState<string>('');
   const [selectedCustomerId, setSelectedCustomerId] = useState<string>('');
+
+  // Guard: Rep cannot enter cart or billing steps without first selecting a customer
+  useEffect(() => {
+    if (currentStep > 1 && !selectedCustomerId) {
+      setCurrentStep(1);
+    }
+  }, [currentStep, selectedCustomerId]);
   const [billingMethod, setBillingMethod] = useState<'NORMAL' | 'BILL_TO_BILL'>('NORMAL');
   const [customerUnpaidBills, setCustomerUnpaidBills] = useState<Order[]>([]);
   const [settlePrevAmount, setSettlePrevAmount] = useState<string>('');
@@ -926,6 +934,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   // Cart Management
   const addToCart = (product: Product, qty: number = 1) => {
+    if (!selectedCustomerId) {
+      alert('Please select a customer first before adding items to cart.');
+      return;
+    }
     const stockInfo = lorryStockMap.get(product.id);
     const lorryStock = stockInfo ? stockInfo.stock : product.currentStock;
     const buyRatio = product.freeRatioBuy || 0;
@@ -1361,20 +1373,27 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             <Camera className="w-4 h-4 text-slate-700" />
           </button>
 
-          {/* Quick Cart Action Button */}
+          {/* Quick Cart Action Button - Locked until customer is selected */}
           <button
             type="button"
+            disabled={!selectedCustomerId}
             onClick={() => setCurrentStep(2)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer border ${
-              cart.length > 0
-                ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20'
-                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200'
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs border ${
+              !selectedCustomerId
+                ? 'bg-slate-100 text-slate-400 border-slate-200/60 opacity-60 cursor-not-allowed select-none'
+                : cart.length > 0
+                  ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20 active:scale-95 cursor-pointer'
+                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 active:scale-95 cursor-pointer'
             }`}
-            title="View Cart"
+            title={!selectedCustomerId ? 'Locked: Select a customer first' : 'View Cart'}
           >
-            <ShoppingBag className="w-3.5 h-3.5" />
+            {!selectedCustomerId ? (
+              <Lock className="w-3.5 h-3.5 text-slate-400 shrink-0" />
+            ) : (
+              <ShoppingBag className="w-3.5 h-3.5 shrink-0" />
+            )}
             <span>Cart</span>
-            {totalItemsCount > 0 && (
+            {selectedCustomerId && totalItemsCount > 0 && (
               <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
                 cart.length > 0 ? 'bg-white text-blue-700' : 'bg-slate-300 text-slate-800'
               }`}>
@@ -4149,18 +4168,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         <button
                           type="button"
                           onClick={() => {
+                            if (!selectedCustomerId) {
+                              setStockPageToast('⚠️ Please select a customer first before adding items to cart');
+                              setTimeout(() => setStockPageToast(null), 3000);
+                              return;
+                            }
                             addToCart(product, 1);
                             setStockPageToast(`✓ Added 1x "${product.name}" to cart`);
                             setTimeout(() => setStockPageToast(null), 2500);
                           }}
                           className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs ${
-                            cartItem
-                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                            !selectedCustomerId
+                              ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'
+                              : cartItem
+                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                                : 'bg-blue-600 text-white hover:bg-blue-700'
                           }`}
                         >
-                          <Plus className="w-3.5 h-3.5 stroke-[3]" />
-                          <span>{cartItem ? `In Cart (${cartItem.quantity})` : 'Add to Bill'}</span>
+                          {!selectedCustomerId ? (
+                            <>
+                              <Lock className="w-3.5 h-3.5 text-slate-400" />
+                              <span>Select Shop First</span>
+                            </>
+                          ) : (
+                            <>
+                              <Plus className="w-3.5 h-3.5 stroke-[3]" />
+                              <span>{cartItem ? `In Cart (${cartItem.quantity})` : 'Add to Bill'}</span>
+                            </>
+                          )}
                         </button>
                       </div>
                     </div>
