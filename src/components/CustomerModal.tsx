@@ -179,7 +179,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
 
         <form onSubmit={handleSubmit} className="p-5 sm:p-7 space-y-3.5 sm:space-y-4 overflow-y-auto">
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
               Client / Store Name *
             </label>
             <input
@@ -194,7 +194,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Company / Business Entity
               </label>
               <input
@@ -206,7 +206,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Primary Phone *
               </label>
               <input
@@ -221,7 +221,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
           </div>
 
           <div>
-            <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+            <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
               Delivery Address / Retail Outlet Location *
             </label>
             <input
@@ -236,7 +236,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
 
           <div className="grid grid-cols-2 gap-4">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 City / Town
               </label>
               <input
@@ -248,7 +248,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Assigned Route (Lorry)
               </label>
               <select
@@ -269,7 +269,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
           {/* GPS Coordinates & Geolocation */}
           <div className="bg-slate-50/80 p-3.5 rounded-2xl border border-slate-200/80 space-y-2">
             <div className="flex items-center justify-between">
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-600 flex items-center gap-1.5">
+              <label className="text-xs font-bold uppercase tracking-wider text-black flex items-center gap-1.5">
                 <MapPin className="w-3.5 h-3.5 text-blue-600" />
                 Store GPS Location
               </label>
@@ -309,7 +309,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
 
           <div className="grid grid-cols-3 gap-3">
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Pricing Tier
               </label>
               <select
@@ -329,7 +329,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
               </select>
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Discount (%)
               </label>
               <input
@@ -341,7 +341,7 @@ export const CustomerModal: React.FC<CustomerModalProps> = ({
               />
             </div>
             <div>
-              <label className="text-xs font-bold uppercase tracking-wider text-slate-400 block mb-1">
+              <label className="text-xs font-bold uppercase tracking-wider text-black block mb-1">
                 Credit Limit ({currencyConfig.symbol})
               </label>
               <input
