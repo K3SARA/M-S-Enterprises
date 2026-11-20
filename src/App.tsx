@@ -28,6 +28,7 @@ import { HrPayroll } from './pages/HrPayroll';
 import { Login } from './pages/Login';
 import { RepMobilePortal } from './pages/RepMobilePortal';
 import { SupplierPortal } from './pages/SupplierPortal';
+import { BankController } from './pages/BankController';
 import { InvoiceModal } from './components/InvoiceModal';
 import { CurrencyProvider, useCurrency, CURRENCIES } from './context/CurrencyContext';
 import { Order, User } from './types';
@@ -196,6 +197,8 @@ export const AppContent: React.FC = () => {
           {currentTab === 'distributor-performance' && <DistributorPerformance />}
 
           {currentTab === 'settings' && <Settings />}
+
+          {currentTab === 'bank-controller' && <BankController />}
         </div>
 
         {/* Mobile Bottom Navigation Bar (md:hidden) */}

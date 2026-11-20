@@ -1030,3 +1030,64 @@ export interface GeofenceCheckinResult {
   message?: string;
   visit?: CustomerVisit;
 }
+
+// --------------------------------------------------------
+// BANK MANAGEMENT
+// --------------------------------------------------------
+
+export type BankAccountType = 'CURRENT' | 'SAVINGS' | 'CASH';
+export type BankTransactionType = 'DEPOSIT' | 'WITHDRAWAL' | 'TRANSFER_IN' | 'TRANSFER_OUT';
+export type BankTransactionCategory =
+  | 'CASH_DEPOSIT'
+  | 'CUSTOMER_PAYMENT'
+  | 'LOAN_RECEIVED'
+  | 'SUPPLIER_PAYMENT'
+  | 'SALARY'
+  | 'EXPENSE'
+  | 'LOAN_REPAYMENT'
+  | 'CHEQUE_DEPOSIT'
+  | 'TRANSFER'
+  | 'OTHER';
+
+export interface BankAccount {
+  id: string;
+  name: string;
+  bankName: string;
+  accountNumber: string;
+  accountType: BankAccountType;
+  balance: number;
+  color: string;
+  isActive: boolean;
+  notes?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  _count?: { transactions: number };
+}
+
+export interface BankTransaction {
+  id: string;
+  accountId: string;
+  account?: { name: string; bankName: string; color: string };
+  type: BankTransactionType;
+  amount: number;
+  balanceAfter: number;
+  category: BankTransactionCategory;
+  description: string;
+  reference?: string | null;
+  transactedAt: string;
+  transferToAccountId?: string | null;
+  relatedOrderId?: string | null;
+  relatedSupplierId?: string | null;
+  relatedEmployeeId?: string | null;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface BankSummary {
+  totalBalance: number;
+  accountCount: number;
+  monthIn: number;
+  monthOut: number;
+  recentTransactions: BankTransaction[];
+}
+

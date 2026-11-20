@@ -9530,6 +9530,189 @@ app.put('/api/settings', (req: Request, res: Response) => {
 });
 
 // ========================================================
+// BANK MANAGEMENT API
+// ========================================================
+
+// --- Bank Accounts ---
+app.get('/api/bank/accounts', async (_req: Request, res: Response) => {
+  try {
+    const accounts = await prisma.bankAccount.findMany({
+      where: { isActive: true },
+      orderBy: { createdAt: 'asc' },
+      include: { _count: { select: { transactions: true } } }
+    });
+    res.json(accounts);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/bank/accounts', async (req: Request, res: Response) => {
+  try {
+    const { name, bankName, accountNumber, accountType, balance, color, notes } = req.body;
+    if (!name || !bankName || !accountNumber) {
+      return res.status(400).json({ error: 'Name, bank name, and account number are required.' });
+    }
+    const account = await prisma.bankAccount.create({
+      data: { name, bankName, accountNumber, accountType: accountType || 'CURRENT', balance: Number(balance) || 0, color: color || '#0C3B9B', notes }
+    });
+    res.json(account);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.put('/api/bank/accounts/:id', async (req: Request, res: Response) => {
+  try {
+    const { name, bankName, accountNumber, accountType, color, notes, isActive } = req.body;
+    const account = await prisma.bankAccount.update({
+      where: { id: req.params.id },
+      data: { name, bankName, accountNumber, accountType, color, notes, ...(isActive !== undefined ? { isActive } : {}) }
+    });
+    res.json(account);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/bank/accounts/:id', async (req: Request, res: Response) => {
+  try {
+    await prisma.bankAccount.update({ where: { id: req.params.id }, data: { isActive: false } });
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Bank Transactions ---
+app.get('/api/bank/transactions', async (req: Request, res: Response) => {
+  try {
+    const { accountId, from, to, type, category } = req.query as Record<string, string>;
+    const where: any = {};
+    if (accountId) where.accountId = accountId;
+    if (type) where.type = type;
+    if (category) where.category = category;
+    if (from || to) {
+      where.transactedAt = {};
+      if (from) where.transactedAt.gte = new Date(from);
+      if (to) where.transactedAt.lte = new Date(to + 'T23:59:59.999Z');
+    }
+    const transactions = await prisma.bankTransaction.findMany({
+      where,
+      orderBy: { transactedAt: 'desc' },
+      take: 500,
+      include: { account: { select: { name: true, bankName: true, color: true } } }
+    });
+    res.json(transactions);
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/bank/transactions', async (req: Request, res: Response) => {
+  try {
+    const { accountId, type, amount, category, description, reference, transactedAt, transferToAccountId, relatedOrderId, relatedSupplierId, relatedEmployeeId } = req.body;
+    if (!accountId || !type || !amount || !description) {
+      return res.status(400).json({ error: 'Account, type, amount, and description are required.' });
+    }
+    const amt = Math.abs(Number(amount));
+    if (isNaN(amt) || amt <= 0) return res.status(400).json({ error: 'Amount must be a positive number.' });
+
+    const account = await prisma.bankAccount.findUnique({ where: { id: accountId } });
+    if (!account) return res.status(404).json({ error: 'Bank account not found.' });
+
+    const isCredit = ['DEPOSIT', 'TRANSFER_IN'].includes(type);
+    const newBalance = account.balance + (isCredit ? amt : -amt);
+
+    const [txn] = await prisma.$transaction([
+      prisma.bankTransaction.create({
+        data: {
+          accountId, type, amount: amt, balanceAfter: newBalance,
+          category: category || 'OTHER', description,
+          reference: reference || null,
+          transactedAt: transactedAt ? new Date(transactedAt) : new Date(),
+          transferToAccountId: transferToAccountId || null,
+          relatedOrderId: relatedOrderId || null,
+          relatedSupplierId: relatedSupplierId || null,
+          relatedEmployeeId: relatedEmployeeId || null,
+        }
+      }),
+      prisma.bankAccount.update({ where: { id: accountId }, data: { balance: newBalance } })
+    ]);
+
+    // If transfer, create mirror entry in destination account
+    if (type === 'TRANSFER_OUT' && transferToAccountId) {
+      const toAccount = await prisma.bankAccount.findUnique({ where: { id: transferToAccountId } });
+      if (toAccount) {
+        const toNewBalance = toAccount.balance + amt;
+        await prisma.$transaction([
+          prisma.bankTransaction.create({
+            data: {
+              accountId: transferToAccountId, type: 'TRANSFER_IN', amount: amt, balanceAfter: toNewBalance,
+              category: 'TRANSFER', description: `Transfer from ${account.name}`,
+              reference: reference || null,
+              transactedAt: transactedAt ? new Date(transactedAt) : new Date(),
+              transferToAccountId: accountId,
+            }
+          }),
+          prisma.bankAccount.update({ where: { id: transferToAccountId }, data: { balance: toNewBalance } })
+        ]);
+      }
+    }
+
+    res.json(txn);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.delete('/api/bank/transactions/:id', async (req: Request, res: Response) => {
+  try {
+    const txn = await prisma.bankTransaction.findUnique({ where: { id: req.params.id } });
+    if (!txn) return res.status(404).json({ error: 'Transaction not found.' });
+
+    // Reverse the balance effect
+    const isCredit = ['DEPOSIT', 'TRANSFER_IN'].includes(txn.type);
+    await prisma.$transaction([
+      prisma.bankTransaction.delete({ where: { id: req.params.id } }),
+      prisma.bankAccount.update({
+        where: { id: txn.accountId },
+        data: { balance: { increment: isCredit ? -txn.amount : txn.amount } }
+      })
+    ]);
+    res.json({ success: true });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+// --- Bank Summary ---
+app.get('/api/bank/summary', async (_req: Request, res: Response) => {
+  try {
+    const accounts = await prisma.bankAccount.findMany({ where: { isActive: true } });
+    const totalBalance = accounts.reduce((s, a) => s + a.balance, 0);
+
+    const now = new Date();
+    const startOfMonth = new Date(now.getFullYear(), now.getMonth(), 1);
+    const monthTxns = await prisma.bankTransaction.findMany({
+      where: { transactedAt: { gte: startOfMonth } }
+    });
+    const monthIn = monthTxns.filter(t => ['DEPOSIT', 'TRANSFER_IN'].includes(t.type)).reduce((s, t) => s + t.amount, 0);
+    const monthOut = monthTxns.filter(t => ['WITHDRAWAL', 'TRANSFER_OUT'].includes(t.type)).reduce((s, t) => s + t.amount, 0);
+
+    const recentTxns = await prisma.bankTransaction.findMany({
+      orderBy: { transactedAt: 'desc' },
+      take: 10,
+      include: { account: { select: { name: true, color: true } } }
+    });
+
+    res.json({ totalBalance, accountCount: accounts.length, monthIn, monthOut, recentTransactions: recentTxns });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+// ========================================================
 // SERVE PRODUCTION FRONTEND (RAILWAY / WEB HOSTING)
 // ========================================================
 const distPath = path.join(__dirname, '../dist');

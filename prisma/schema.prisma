@@ -625,3 +625,54 @@ model Payroll {
 
   salaryAdvances   SalaryAdvance[]
 }
+
+// --------------------------------------------------------
+// BANK MANAGEMENT
+// --------------------------------------------------------
+
+model BankAccount {
+  id            String   @id @default(uuid())
+  name          String                       // e.g. "Commercial Bank - Main"
+  bankName      String                       // e.g. "Commercial Bank"
+  accountNumber String   @unique
+  accountType   String   @default("CURRENT") // CURRENT | SAVINGS | CASH
+  balance       Float    @default(0.0)
+  color         String   @default("#0C3B9B") // For UI card color
+  isActive      Boolean  @default(true)
+  notes         String?
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+
+  transactions  BankTransaction[]
+}
+
+model BankTransaction {
+  id            String      @id @default(uuid())
+  accountId     String
+  account       BankAccount @relation(fields: [accountId], references: [id], onDelete: Cascade)
+
+  type          String      // DEPOSIT | WITHDRAWAL | TRANSFER_IN | TRANSFER_OUT
+  amount        Float
+  balanceAfter  Float       @default(0.0)
+
+  category      String      @default("OTHER")
+  // Categories: CASH_DEPOSIT | CUSTOMER_PAYMENT | LOAN_RECEIVED |
+  //             SUPPLIER_PAYMENT | SALARY | EXPENSE | LOAN_REPAYMENT |
+  //             CHEQUE_DEPOSIT | TRANSFER | OTHER
+
+  description   String
+  reference     String?     // Cheque #, Slip #, Invoice # etc.
+  transactedAt  DateTime    @default(now())
+
+  // Optional links to existing records
+  relatedOrderId     String?
+  relatedSupplierId  String?
+  relatedEmployeeId  String?
+
+  // Transfer linkage
+  transferToAccountId String? // If this is a TRANSFER_OUT, points to destination account
+
+  createdAt     DateTime @default(now())
+  updatedAt     DateTime @updatedAt
+}
+

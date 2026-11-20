@@ -20,6 +20,7 @@ import {
   Award,
   LogOut,
   MapPin,
+  Landmark,
   X
 } from 'lucide-react';
 import { useCurrency, CURRENCIES, CurrencyCode } from '../context/CurrencyContext';
@@ -80,6 +81,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'customers', label: 'Clients & Accounts', icon: Users },
         { id: 'hr-payroll', label: 'HR & Payroll', icon: Briefcase, badge: 'Staff', badgeTone: 'pnl' },
         { id: 'cheques', label: 'Cheque Management', icon: CreditCard, badge: 'PDC', badgeTone: 'inward' },
+        { id: 'bank-controller', label: 'Bank Controller', icon: Landmark, badge: 'Banks', badgeTone: 'pnl' },
         { id: 'expenses', label: 'Expenses & Opex', icon: TrendingDown, badge: 'Outflow', badgeTone: 'expense' },
         { id: 'pnl', label: 'Profit & Loss', icon: TrendingUp, badge: 'P&L', badgeTone: 'pnl' },
         { id: 'distributor-performance', label: 'Distributor Performance', icon: Award, badge: 'KPIs', badgeTone: 'pnl' },

@@ -34,7 +34,10 @@ import {
   CustomerVisit,
   RouteOptimizationResult,
   RouteStatusResult,
-  GeofenceCheckinResult
+  GeofenceCheckinResult,
+  BankAccount,
+  BankTransaction,
+  BankSummary
 } from '../types';
 
 // Dynamic API URL: uses relative '/api' on Railway / production web,
@@ -711,4 +714,18 @@ export interface DistributorPerformanceData {
 export const DistributorPerformanceService = {
   getPerformance: (params?: { timeframe?: string; from?: string; to?: string; routeId?: string }) =>
     api.get<DistributorPerformanceData>('/analytics/distributor-performance', { params }).then(r => r.data),
+};
+
+// Bank service append - copy this to api.ts end
+export const BankService = {
+  getAccounts: () => api.get<BankAccount[]>('/bank/accounts').then(r => r.data),
+  createAccount: (data: Partial<BankAccount>) => api.post<BankAccount>('/bank/accounts', data).then(r => r.data),
+  updateAccount: (id: string, data: Partial<BankAccount>) => api.put<BankAccount>(`/bank/accounts/${id}`, data).then(r => r.data),
+  deleteAccount: (id: string) => api.delete(`/bank/accounts/${id}`).then(r => r.data),
+  getTransactions: (params?: { accountId?: string; from?: string; to?: string; type?: string; category?: string }) =>
+    api.get<BankTransaction[]>('/bank/transactions', { params }).then(r => r.data),
+  addTransaction: (data: Partial<BankTransaction> & { accountId: string; type: string; amount: number; description: string }) =>
+    api.post<BankTransaction>('/bank/transactions', data).then(r => r.data),
+  deleteTransaction: (id: string) => api.delete(`/bank/transactions/${id}`).then(r => r.data),
+  getSummary: () => api.get<BankSummary>('/bank/summary').then(r => r.data),
 };
