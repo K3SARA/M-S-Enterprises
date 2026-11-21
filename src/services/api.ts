@@ -42,18 +42,60 @@ import {
   LorryStockTransferItem
 } from '../types';
 
-// Dynamic API URL: uses relative '/api' on Railway / production web,
-// or fallback to localhost:4812 in standalone Vite dev / Electron
-const isDevVite = typeof window !== 'undefined' && (['5173', '5174', '5175', '3000'].includes(window.location.port) || Boolean(import.meta.env.DEV));
-const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
-const devHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
-const API_BASE_URL = import.meta.env.VITE_API_URL || (isDevVite || isFileProtocol ? `http://${devHost}:4812/api` : '/api');
+import { Capacitor } from '@capacitor/core';
+
+export const DEFAULT_MOBILE_SERVER_URL = 'http://192.168.201.15:4812';
+
+export function getCustomServerUrl(): string {
+  if (typeof window === 'undefined') return '';
+  return localStorage.getItem('ms_server_url') || '';
+}
+
+export function setCustomServerUrl(url: string): void {
+  const clean = url.trim().replace(/\/+$/, '');
+  localStorage.setItem('ms_server_url', clean);
+  const base = clean ? `${clean}/api` : getCalculatedApiBaseUrl();
+  api.defaults.baseURL = base;
+}
+
+export function getCalculatedApiBaseUrl(): string {
+  const custom = getCustomServerUrl();
+  if (custom) {
+    return `${custom.replace(/\/+$/, '')}/api`;
+  }
+
+  const isNative = typeof window !== 'undefined' && Capacitor.isNativePlatform();
+  if (isNative) {
+    return `${DEFAULT_MOBILE_SERVER_URL}/api`;
+  }
+
+  const isDevVite = typeof window !== 'undefined' && (['5173', '5174', '5175', '3000'].includes(window.location.port) || Boolean(import.meta.env.DEV));
+  const isFileProtocol = typeof window !== 'undefined' && window.location.protocol === 'file:';
+  const devHost = typeof window !== 'undefined' && window.location.hostname ? window.location.hostname : '127.0.0.1';
+  return import.meta.env.VITE_API_URL || (isDevVite || isFileProtocol ? `http://${devHost}:4812/api` : '/api');
+}
+
+export async function testServerUrl(url: string): Promise<{ success: boolean; message: string }> {
+  try {
+    const clean = url.trim().replace(/\/+$/, '');
+    const res = await axios.get(`${clean}/api/health`, { timeout: 4000 });
+    if (res.status === 200) {
+      return { success: true, message: 'Connected to M&S Server (Status 200 OK)' };
+    }
+    return { success: false, message: `Server replied with status ${res.status}` };
+  } catch (err) {
+    return { success: false, message: (err && err.message) || 'Connection refused or timed out' };
+  }
+}
+
+export const API_BASE_URL = getCalculatedApiBaseUrl();
 
 const api = axios.create({
   baseURL: API_BASE_URL,
   headers: {
     'Content-Type': 'application/json'
-  }
+  },
+  timeout: 15000
 });
 
 export const ProductService = {

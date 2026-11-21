@@ -4,9 +4,22 @@ import {
   User as UserIcon,
   AlertCircle,
   Eye,
-  EyeOff
+  EyeOff,
+  Server,
+  Settings,
+  CheckCircle2,
+  RefreshCw,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
-import { AuthService } from '../services/api';
+import {
+  AuthService,
+  getCalculatedApiBaseUrl,
+  getCustomServerUrl,
+  setCustomServerUrl,
+  testServerUrl,
+  DEFAULT_MOBILE_SERVER_URL
+} from '../services/api';
 import { User } from '../types';
 
 interface LoginProps {
@@ -21,6 +34,43 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [loading, setLoading] = useState(false);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showQuickFill, setShowQuickFill] = useState(false);
+
+  // Server Settings Modal State
+  const [showServerModal, setShowServerModal] = useState(false);
+  const [serverInputUrl, setServerInputUrl] = useState(() => {
+    return getCustomServerUrl() || DEFAULT_MOBILE_SERVER_URL;
+  });
+  const [testingConnection, setTestingConnection] = useState(false);
+  const [connectionTestResult, setConnectionTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  // Cached user for offline login
+  const cachedUser: User | null = (() => {
+    try {
+      const raw = localStorage.getItem('distributor_auth_user');
+      return raw ? JSON.parse(raw) : null;
+    } catch {
+      return null;
+    }
+  })();
+
+  const handleTestConnection = async () => {
+    setTestingConnection(true);
+    setConnectionTestResult(null);
+    try {
+      const res = await testServerUrl(serverInputUrl);
+      setConnectionTestResult(res);
+    } catch (e: any) {
+      setConnectionTestResult({ success: false, message: e.message || 'Connection failed' });
+    } finally {
+      setTestingConnection(false);
+    }
+  };
+
+  const handleSaveServerUrl = () => {
+    setCustomServerUrl(serverInputUrl);
+    setShowServerModal(false);
+    setErrorMessage(null);
+  };
 
   const handleLoginSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -43,9 +93,16 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       onLoginSuccess(user);
     } catch (err: any) {
       console.error('Login failure:', err);
-      setErrorMessage(
-        err.response?.data?.error || 'Invalid credentials. Please verify username and password.'
-      );
+      const isNetError = !err.response || err.code === 'ERR_NETWORK' || err.message?.toLowerCase().includes('network');
+      if (isNetError) {
+        setErrorMessage(
+          `Cannot reach server at ${getCalculatedApiBaseUrl()}. Please verify your Wi-Fi or tap Server Settings below.`
+        );
+      } else {
+        setErrorMessage(
+          err.response?.data?.error || 'Invalid credentials. Please verify username and password.'
+        );
+      }
     } finally {
       setLoading(false);
     }
@@ -212,6 +269,41 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </button>
           </div>
 
+          {/* Offline Entry Button if user was previously logged in */}
+          {cachedUser && (
+            <div className="pt-2">
+              <button
+                type="button"
+                onClick={() => onLoginSuccess(cachedUser)}
+                className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-98"
+                title="Log in using locally cached account credentials when offline"
+              >
+                <span>⚡ Enter Offline Mode as {cachedUser.fullName || cachedUser.username}</span>
+              </button>
+            </div>
+          )}
+
+          {/* Server Connection Bar */}
+          <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
+            <span className="flex items-center gap-1 truncate mr-1">
+              <Server className="w-3.5 h-3.5 text-blue-600 shrink-0" />
+              <span className="font-mono text-slate-700 font-bold truncate">
+                {getCustomServerUrl() || DEFAULT_MOBILE_SERVER_URL}
+              </span>
+            </span>
+            <button
+              type="button"
+              onClick={() => {
+                setServerInputUrl(getCustomServerUrl() || DEFAULT_MOBILE_SERVER_URL);
+                setConnectionTestResult(null);
+                setShowServerModal(true);
+              }}
+              className="text-blue-600 hover:text-blue-800 font-bold underline shrink-0 cursor-pointer"
+            >
+              Change
+            </button>
+          </div>
+
           {/* Subtext */}
           <div className="text-center pt-1">
             <span className="text-[11px] text-slate-400 hover:text-slate-600 transition cursor-default">
@@ -261,6 +353,103 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       <div className="absolute bottom-4 text-center text-[11px] text-slate-300 font-mono z-10 px-4">
         M&amp;S Enterprises &bull; 115/1A1, Udumulla Road, Himbutana, Angoda &bull; Tel: 0773669913 / 0707077551
       </div>
+
+      {/* Server Settings Modal */}
+      {showServerModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/60 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-2xl max-w-sm w-full p-5 shadow-2xl border border-slate-200 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-3">
+              <div className="flex items-center gap-2">
+                <Server className="w-5 h-5 text-blue-600" />
+                <h3 className="font-bold text-sm text-slate-900">Backend Server Settings</h3>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowServerModal(false)}
+                className="text-slate-400 hover:text-slate-600 text-lg leading-none p-1 cursor-pointer"
+              >
+                &times;
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-600 leading-relaxed">
+              Enter the backend server address (e.g. local Wi-Fi IP or Railway URL) that this mobile app connects to:
+            </p>
+
+            <div className="space-y-1.5">
+              <label className="text-[11px] font-bold text-slate-700 uppercase tracking-wider">
+                Server Base URL
+              </label>
+              <input
+                type="text"
+                value={serverInputUrl}
+                onChange={(e) => setServerInputUrl(e.target.value)}
+                placeholder="http://192.168.201.15:4812"
+                className="w-full text-xs font-mono bg-slate-50 border border-slate-300 rounded-lg px-3 py-2 text-slate-900 focus:outline-none focus:border-blue-600 focus:bg-white"
+              />
+            </div>
+
+            {/* Quick preset buttons */}
+            <div className="space-y-1">
+              <span className="text-[10px] text-slate-400 font-semibold uppercase">Presets:</span>
+              <div className="flex flex-wrap gap-1.5">
+                <button
+                  type="button"
+                  onClick={() => setServerInputUrl('http://192.168.201.15:4812')}
+                  className="text-[11px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-mono text-slate-700 cursor-pointer"
+                >
+                  Office PC (192.168.201.15)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setServerInputUrl('http://10.0.2.2:4812')}
+                  className="text-[11px] px-2 py-1 bg-slate-100 hover:bg-slate-200 rounded font-mono text-slate-700 cursor-pointer"
+                >
+                  Android Emulator
+                </button>
+              </div>
+            </div>
+
+            {/* Test result message */}
+            {connectionTestResult && (
+              <div
+                className={`p-2.5 rounded-lg text-xs flex items-center gap-2 ${
+                  connectionTestResult.success
+                    ? 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                    : 'bg-rose-50 text-rose-800 border border-rose-200'
+                }`}
+              >
+                {connectionTestResult.success ? (
+                  <CheckCircle2 className="w-4 h-4 text-emerald-600 shrink-0" />
+                ) : (
+                  <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+                )}
+                <span className="leading-tight">{connectionTestResult.message}</span>
+              </div>
+            )}
+
+            <div className="flex items-center gap-2 pt-2">
+              <button
+                type="button"
+                onClick={handleTestConnection}
+                disabled={testingConnection}
+                className="flex-1 py-2 px-3 bg-slate-100 hover:bg-slate-200 active:bg-slate-300 text-slate-800 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 disabled:opacity-50 cursor-pointer"
+              >
+                <RefreshCw className={`w-3.5 h-3.5 ${testingConnection ? 'animate-spin' : ''}`} />
+                <span>{testingConnection ? 'Testing...' : 'Test Connection'}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={handleSaveServerUrl}
+                className="flex-1 py-2 px-3 bg-blue-600 hover:bg-blue-700 active:bg-blue-800 text-white rounded-xl text-xs font-bold transition shadow-sm cursor-pointer"
+              >
+                Save &amp; Apply
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };
