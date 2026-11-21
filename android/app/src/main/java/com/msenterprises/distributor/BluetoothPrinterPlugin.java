@@ -23,6 +23,7 @@ import com.getcapacitor.PluginCall;
 import com.getcapacitor.PluginMethod;
 import com.getcapacitor.annotation.CapacitorPlugin;
 import com.getcapacitor.annotation.Permission;
+import com.getcapacitor.annotation.PermissionCallback;
 
 import java.io.OutputStream;
 import java.lang.reflect.Method;
@@ -45,7 +46,7 @@ import java.util.UUID;
 )
 public class BluetoothPrinterPlugin extends Plugin {
 
-    // Standard Bluetooth Serial Port Profile (SPP) UUID used by 99% of ESC/POS thermal printers
+    // Standard Bluetooth Serial Port Profile (SPP) UUID used by ESC/POS thermal printers
     private static final UUID SPP_UUID = UUID.fromString("00001101-0000-1000-8000-00805F9B34FB");
 
     private BluetoothAdapter getBluetoothAdapter() {
@@ -90,6 +91,20 @@ public class BluetoothPrinterPlugin extends Plugin {
         fetchPairedDevices(call, adapter);
     }
 
+    @PermissionCallback
+    private void pairedDevicesCallback(PluginCall call) {
+        BluetoothAdapter adapter = getBluetoothAdapter();
+        if (adapter == null) {
+            call.reject("Bluetooth is not supported on this device.");
+            return;
+        }
+        if (!hasBluetoothPermission()) {
+            call.reject("Bluetooth Nearby Devices permission was not granted. Please allow in Android App Settings.");
+            return;
+        }
+        fetchPairedDevices(call, adapter);
+    }
+
     private void fetchPairedDevices(PluginCall call, BluetoothAdapter adapter) {
         try {
             Set<BluetoothDevice> pairedDevices = adapter.getBondedDevices();
@@ -121,7 +136,8 @@ public class BluetoothPrinterPlugin extends Plugin {
                                 || lower.contains("rpp") || lower.contains("zj") || lower.contains("thermal")
                                 || lower.contains("goojprt") || lower.contains("innerprinter")
                                 || lower.contains("xp") || lower.contains("bluetooth") || lower.contains("80")
-                                || lower.contains("58")) {
+                                || lower.contains("58") || lower.contains("pp802") || lower.contains("pp-802")
+                                || lower.contains("pp") || lower.contains("802")) {
                             isLikelyPrinter = true;
                         }
                     }
@@ -143,6 +159,23 @@ public class BluetoothPrinterPlugin extends Plugin {
 
     @PluginMethod
     public void printBytes(PluginCall call) {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {
+            requestPermissionForAlias("bluetooth", call, "printBytesCallback");
+            return;
+        }
+        doPrintBytes(call);
+    }
+
+    @PermissionCallback
+    private void printBytesCallback(PluginCall call) {
+        if (!hasBluetoothPermission()) {
+            call.reject("Bluetooth Nearby Devices permission was not granted. Please allow in Android App Settings.");
+            return;
+        }
+        doPrintBytes(call);
+    }
+
+    private void doPrintBytes(PluginCall call) {
         String address = call.getString("address");
         String bytesBase64 = call.getString("bytesBase64");
 
@@ -162,12 +195,7 @@ public class BluetoothPrinterPlugin extends Plugin {
             return;
         }
 
-        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {
-            requestPermissionForAlias("bluetooth", call, "printBytesCallback");
-            return;
-        }
-
-        // Run network/Bluetooth I/O on background thread to prevent UI freezing
+        // Run network/Bluetooth socket I/O on background thread to prevent UI freezing
         new Thread(() -> {
             BluetoothSocket socket = null;
             OutputStream outputStream = null;
@@ -178,7 +206,7 @@ public class BluetoothPrinterPlugin extends Plugin {
                     return;
                 }
 
-                // Cancel discovery because it slows down the connection
+                // Cancel discovery because it significantly slows down connection
                 try {
                     adapter.cancelDiscovery();
                 } catch (Exception ignored) {}
@@ -188,7 +216,11 @@ public class BluetoothPrinterPlugin extends Plugin {
                     socket = device.createRfcommSocketToServiceRecord(SPP_UUID);
                     socket.connect();
                 } catch (Exception socketEx) {
-                    // Fallback using reflection for generic Bluetooth printers
+                    try {
+                        if (socket != null) socket.close();
+                    } catch (Exception ignored) {}
+
+                    // Fallback using reflection for generic Chinese/OEM Bluetooth thermal printers (like PP802)
                     try {
                         Method m = device.getClass().getMethod("createRfcommSocket", new Class[]{int.class});
                         socket = (BluetoothSocket) m.invoke(device, 1);
@@ -196,20 +228,20 @@ public class BluetoothPrinterPlugin extends Plugin {
                             socket.connect();
                         }
                     } catch (Exception fallbackEx) {
-                        call.reject("Could not establish Bluetooth connection with printer: " + socketEx.getMessage());
+                        call.reject("Could not establish connection with printer (" + (device.getName() != null ? device.getName() : "PP802") + "): " + socketEx.getMessage());
                         return;
                     }
                 }
 
                 if (socket == null || !socket.isConnected()) {
-                    call.reject("Failed to connect to Bluetooth printer.");
+                    call.reject("Failed to connect to Bluetooth printer. Please check printer power and range.");
                     return;
                 }
 
                 outputStream = socket.getOutputStream();
                 byte[] data = Base64.decode(bytesBase64, Base64.DEFAULT);
 
-                // Send data in chunks to prevent buffer overflow in small printers
+                // Send data in chunks of 256 bytes to prevent buffer overflow in small thermal printers
                 int chunkSize = 256;
                 for (int i = 0; i < data.length; i += chunkSize) {
                     int len = Math.min(chunkSize, data.length - i);
@@ -220,15 +252,14 @@ public class BluetoothPrinterPlugin extends Plugin {
                     } catch (InterruptedException ignored) {}
                 }
 
-                // Ensure all bytes flushed
                 outputStream.flush();
                 try {
-                    Thread.sleep(250);
+                    Thread.sleep(300);
                 } catch (InterruptedException ignored) {}
 
                 JSObject res = new JSObject();
                 res.put("success", true);
-                res.put("message", "Printed successfully to " + device.getName());
+                res.put("message", "Printed successfully to " + (device.getName() != null ? device.getName() : "printer"));
                 call.resolve(res);
 
             } catch (SecurityException se) {
