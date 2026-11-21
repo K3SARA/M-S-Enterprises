@@ -10,3 +10,7 @@ distributor.db-journal
 *.log
 npm-debug.log*
 .DS_Store
+android/.gradle/
+android/build/
+android/app/build/
+android/local.properties

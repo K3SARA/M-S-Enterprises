@@ -1,5 +1,6 @@
 import { Customer, Product, Lorry, Order } from '../types';
 import { LorryService, OrderService } from './api';
+import { Network } from '@capacitor/network';
 
 export interface QueuedOfflineBill {
   localId: string;
@@ -31,10 +32,41 @@ const STORAGE_KEYS = {
 
 export const OfflineSyncService = {
   /**
-   * Check if browser currently has active internet connection
+   * Check if browser or native device currently has active internet connection
    */
   isOnline(): boolean {
     return typeof navigator !== 'undefined' ? navigator.onLine : true;
+  },
+
+  /**
+   * Listen for network reconnection on Web, Electron, and Android via Capacitor Network
+   */
+  initNetworkListener(onStatusChange: (connected: boolean) => void): () => void {
+    const handleOnline = () => onStatusChange(true);
+    const handleOffline = () => onStatusChange(false);
+    if (typeof window !== 'undefined') {
+      window.addEventListener('online', handleOnline);
+      window.addEventListener('offline', handleOffline);
+    }
+
+    let removeCapacitorListener: (() => void) | null = null;
+    try {
+      Network.addListener('networkStatusChange', status => {
+        onStatusChange(status.connected);
+      }).then(handle => {
+        removeCapacitorListener = () => handle.remove();
+      });
+    } catch (e) {
+      // Ignored outside native environment
+    }
+
+    return () => {
+      if (typeof window !== 'undefined') {
+        window.removeEventListener('online', handleOnline);
+        window.removeEventListener('offline', handleOffline);
+      }
+      if (removeCapacitorListener) removeCapacitorListener();
+    };
   },
 
   /**

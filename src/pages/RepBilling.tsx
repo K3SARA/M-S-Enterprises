@@ -245,18 +245,15 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   };
 
   useEffect(() => {
-    const onOnline = () => {
-      setIsOnline(true);
-      handleSyncPending();
-    };
-    const onOffline = () => {
-      setIsOnline(false);
-    };
+    // Cross-platform network listener (Web, Desktop, and Android Native Capacitor)
+    const cleanupNetwork = OfflineSyncService.initNetworkListener(connected => {
+      setIsOnline(connected);
+      if (connected) {
+        handleSyncPending();
+      }
+    });
 
-    window.addEventListener('online', onOnline);
-    window.addEventListener('offline', onOffline);
-
-    // Check every 30 seconds if bills are pending and we are online
+    // Background safety interval: Auto-sync every 30 seconds if bills are pending
     const timer = setInterval(() => {
       if (OfflineSyncService.isOnline() && OfflineSyncService.getPendingBills().length > 0 && !isSyncing) {
         handleSyncPending();
@@ -264,8 +261,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     }, 30000);
 
     return () => {
-      window.removeEventListener('online', onOnline);
-      window.removeEventListener('offline', onOffline);
+      cleanupNetwork();
       clearInterval(timer);
     };
   }, []);
