@@ -30,6 +30,332 @@ const STORAGE_KEYS = {
   LAST_SYNC: 'distributor_offline_last_sync'
 };
 
+const INITIAL_OFFLINE_FALLBACK_DATA: CachedRepData = {
+  cachedAt: new Date().toISOString(),
+  customers: [
+    {
+      id: 'cust-1',
+      code: 'CUST-001',
+      name: 'Apex Supermart & Provisions',
+      companyName: 'Apex Retail Ltd',
+      phone: '+94 77 123 4567',
+      deliveryAddress: '448 Galle Road, Colombo 03',
+      city: 'Colombo',
+      pricingTier: 'STANDARD',
+      discountPercentage: 0,
+      creditLimit: 75000,
+      outstandingBalance: 12500,
+      maxCreditInvoices: 3,
+      latitude: 6.8961,
+      longitude: 79.8576,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      creditRisk: {
+        averageDaysToPay: 12,
+        reliability: 'EXCELLENT',
+        reliabilityLabel: 'Prompt Payer',
+        isCreditBlocked: false,
+        maxCreditDays: 30,
+        aging: {
+          current: 12500,
+          days16to30: 0,
+          days31to60: 0,
+          over60: 0,
+          totalOverdue: 0,
+          oldestUnpaidDays: 8,
+          unpaidBillsCount: 1
+        }
+      }
+    },
+    {
+      id: 'cust-2',
+      code: 'CUST-002',
+      name: 'Grand Central Stores',
+      companyName: 'Central Traders PLC',
+      phone: '+94 71 889 2234',
+      deliveryAddress: '12 Kandy Highway, Kadawatha',
+      city: 'Kadawatha',
+      pricingTier: 'WHOLESALE',
+      discountPercentage: 3,
+      creditLimit: 120000,
+      outstandingBalance: 34000,
+      maxCreditInvoices: 4,
+      latitude: 7.0014,
+      longitude: 79.9542,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      creditRisk: {
+        averageDaysToPay: 18,
+        reliability: 'GOOD',
+        reliabilityLabel: 'Good Standing',
+        isCreditBlocked: false,
+        maxCreditDays: 30,
+        aging: {
+          current: 34000,
+          days16to30: 0,
+          days31to60: 0,
+          over60: 0,
+          totalOverdue: 0,
+          oldestUnpaidDays: 14,
+          unpaidBillsCount: 2
+        }
+      }
+    },
+    {
+      id: 'cust-3',
+      code: 'CUST-003',
+      name: 'Sunil Grocery & Mart',
+      companyName: 'Sunil Stores',
+      phone: '+94 76 554 9912',
+      deliveryAddress: '88 High Level Road, Nugegoda',
+      city: 'Nugegoda',
+      pricingTier: 'STANDARD',
+      discountPercentage: 0,
+      creditLimit: 50000,
+      outstandingBalance: 0,
+      maxCreditInvoices: 3,
+      latitude: 6.8652,
+      longitude: 79.8997,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString(),
+      creditRisk: {
+        averageDaysToPay: 7,
+        reliability: 'EXCELLENT',
+        reliabilityLabel: 'Prompt Payer',
+        isCreditBlocked: false,
+        maxCreditDays: 30,
+        aging: {
+          current: 0,
+          days16to30: 0,
+          days31to60: 0,
+          over60: 0,
+          totalOverdue: 0,
+          oldestUnpaidDays: 0,
+          unpaidBillsCount: 0
+        }
+      }
+    }
+  ],
+  products: [
+    {
+      id: 'prod-1',
+      sku: 'MCH-MAR-400',
+      barcode: '4792024001',
+      name: 'Munchee Marie Biscuits 400g',
+      category: 'Biscuits',
+      unit: 'PKT',
+      unitPrice: 380,
+      costPrice: 320,
+      currentStock: 450,
+      freeStock: 50,
+      minStockAlert: 20,
+      freeRatioBuy: 10,
+      freeRatioGet: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'prod-2',
+      sku: 'ANC-MLK-400',
+      barcode: '4792024002',
+      name: 'Anchor Full Cream Milk Powder 400g',
+      category: 'Dairy',
+      unit: 'PKT',
+      unitPrice: 1150,
+      costPrice: 980,
+      currentStock: 280,
+      freeStock: 25,
+      minStockAlert: 15,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'prod-3',
+      sku: 'WAT-TEA-200',
+      barcode: '4792024003',
+      name: 'Watawala Kahata Tea 200g',
+      category: 'Beverages',
+      unit: 'PKT',
+      unitPrice: 420,
+      costPrice: 360,
+      currentStock: 350,
+      freeStock: 30,
+      minStockAlert: 20,
+      freeRatioBuy: 10,
+      freeRatioGet: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'prod-4',
+      sku: 'SUN-SOP-110',
+      barcode: '4792024004',
+      name: 'Sunlight Lemon Soap 110g',
+      category: 'Personal Care',
+      unit: 'BAR',
+      unitPrice: 160,
+      costPrice: 135,
+      currentStock: 600,
+      freeStock: 60,
+      minStockAlert: 30,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    },
+    {
+      id: 'prod-5',
+      sku: 'MLB-LEMP-200',
+      barcode: '4792024005',
+      name: 'Maliban Lemon Puff 200g',
+      category: 'Biscuits',
+      unit: 'PKT',
+      unitPrice: 260,
+      costPrice: 215,
+      currentStock: 300,
+      freeStock: 30,
+      minStockAlert: 15,
+      freeRatioBuy: 12,
+      freeRatioGet: 1,
+      createdAt: new Date().toISOString(),
+      updatedAt: new Date().toISOString()
+    }
+  ],
+  lorries: [
+    {
+      id: 'lorry-1',
+      vehicleNumber: 'WP ND-4589',
+      driverName: 'Saman Kumara',
+      driverPhone: '0773669913',
+      routeId: 'route-1',
+      status: 'ACTIVE',
+      route: {
+        id: 'route-1',
+        code: 'RT-01',
+        name: 'Route 1 - Kandy & Central Highway',
+        description: 'Colombo to Kandy distribution highway'
+      },
+      lorryStocks: [
+        {
+          id: 'ls-1',
+          lorryId: 'lorry-1',
+          productId: 'prod-1',
+          product: {
+            id: 'prod-1',
+            sku: 'MCH-MAR-400',
+            name: 'Munchee Marie Biscuits 400g',
+            category: 'Biscuits',
+            unit: 'PKT',
+            unitPrice: 380,
+            costPrice: 320,
+            currentStock: 450,
+            freeStock: 50,
+            minStockAlert: 20,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          quantity: 120,
+          freeQuantity: 12,
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'ls-2',
+          lorryId: 'lorry-1',
+          productId: 'prod-2',
+          product: {
+            id: 'prod-2',
+            sku: 'ANC-MLK-400',
+            name: 'Anchor Full Cream Milk Powder 400g',
+            category: 'Dairy',
+            unit: 'PKT',
+            unitPrice: 1150,
+            costPrice: 980,
+            currentStock: 280,
+            freeStock: 25,
+            minStockAlert: 15,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          quantity: 60,
+          freeQuantity: 6,
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'ls-3',
+          lorryId: 'lorry-1',
+          productId: 'prod-3',
+          product: {
+            id: 'prod-3',
+            sku: 'WAT-TEA-200',
+            name: 'Watawala Kahata Tea 200g',
+            category: 'Beverages',
+            unit: 'PKT',
+            unitPrice: 420,
+            costPrice: 360,
+            currentStock: 350,
+            freeStock: 30,
+            minStockAlert: 20,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          quantity: 80,
+          freeQuantity: 8,
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'ls-4',
+          lorryId: 'lorry-1',
+          productId: 'prod-4',
+          product: {
+            id: 'prod-4',
+            sku: 'SUN-SOP-110',
+            name: 'Sunlight Lemon Soap 110g',
+            category: 'Personal Care',
+            unit: 'BAR',
+            unitPrice: 160,
+            costPrice: 135,
+            currentStock: 600,
+            freeStock: 60,
+            minStockAlert: 30,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          quantity: 150,
+          freeQuantity: 15,
+          updatedAt: new Date().toISOString()
+        },
+        {
+          id: 'ls-5',
+          lorryId: 'lorry-1',
+          productId: 'prod-5',
+          product: {
+            id: 'prod-5',
+            sku: 'MLB-LEMP-200',
+            name: 'Maliban Lemon Puff 200g',
+            category: 'Biscuits',
+            unit: 'PKT',
+            unitPrice: 260,
+            costPrice: 215,
+            currentStock: 300,
+            freeStock: 30,
+            minStockAlert: 15,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+          },
+          quantity: 90,
+          freeQuantity: 9,
+          updatedAt: new Date().toISOString()
+        }
+      ]
+    }
+  ],
+  lorryStocks: {
+    'prod-1': { stock: 120, freeStock: 12 },
+    'prod-2': { stock: 60, freeStock: 6 },
+    'prod-3': { stock: 80, freeStock: 8 },
+    'prod-4': { stock: 150, freeStock: 15 },
+    'prod-5': { stock: 90, freeStock: 9 }
+  }
+};
+
 export const OfflineSyncService = {
   /**
    * Check if browser or native device currently has active internet connection
@@ -106,12 +432,12 @@ export const OfflineSyncService = {
   getCachedRepData(): CachedRepData | null {
     try {
       const raw = localStorage.getItem(STORAGE_KEYS.CACHE_DATA);
-      if (!raw) return null;
-      return JSON.parse(raw);
+      if (raw) return JSON.parse(raw);
     } catch (e) {
       console.warn('[OfflineSync] Failed to read cached rep data', e);
-      return null;
     }
+    // Return initial built-in offline dataset if no network sync has occurred yet
+    return INITIAL_OFFLINE_FALLBACK_DATA;
   },
 
   /**

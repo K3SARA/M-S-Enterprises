@@ -26,6 +26,56 @@ interface LoginProps {
   onLoginSuccess: (user: User) => void;
 }
 
+const DEFAULT_OFFLINE_ACCOUNTS: Record<string, { password: string; user: User }> = {
+  navin: {
+    password: 'navin123',
+    user: {
+      id: 'rep-navin-offline',
+      username: 'navin',
+      fullName: 'Navin (Sales Rep)',
+      role: 'REP',
+      phone: '0773669913',
+      lorryId: 'lorry-1',
+      lorry: {
+        id: 'lorry-1',
+        vehicleNumber: 'WP ND-4589',
+        driverName: 'Saman Kumara',
+        routeId: 'route-1',
+        routeName: 'Route 1 - Kandy & Central Highway',
+        routeCode: 'RT-01'
+      }
+    }
+  },
+  admin: {
+    password: 'admin123',
+    user: {
+      id: 'admin-offline',
+      username: 'admin',
+      fullName: 'Managing Director',
+      role: 'ADMIN',
+      phone: '0707077551'
+    }
+  },
+  supplier: {
+    password: 'supplier123',
+    user: {
+      id: 'supplier-offline',
+      username: 'supplier',
+      fullName: 'Ceylon Agro Suppliers',
+      role: 'SUPPLIER',
+      supplierId: 'sup-1',
+      supplier: {
+        id: 'sup-1',
+        code: 'SUP-01',
+        name: 'Ceylon Agro Suppliers',
+        phone: '0112345678',
+        email: 'info@ceylonagro.lk',
+        outstandingBalance: 125000
+      }
+    }
+  }
+};
+
 export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
   const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
@@ -95,8 +145,25 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
       console.error('Login failure:', err);
       const isNetError = !err.response || err.code === 'ERR_NETWORK' || err.message?.toLowerCase().includes('network');
       if (isNetError) {
+        const cleanUser = username.trim().toLowerCase();
+        const cleanPass = password.trim();
+
+        // 1. Check if matches locally cached user credentials
+        if (cachedUser && cachedUser.username.toLowerCase() === cleanUser) {
+          onLoginSuccess(cachedUser);
+          return;
+        }
+
+        // 2. Check if matches preconfigured offline accounts
+        const matchedAccount = DEFAULT_OFFLINE_ACCOUNTS[cleanUser];
+        if (matchedAccount && matchedAccount.password === cleanPass) {
+          localStorage.setItem('distributor_auth_user', JSON.stringify(matchedAccount.user));
+          onLoginSuccess(matchedAccount.user);
+          return;
+        }
+
         setErrorMessage(
-          `Cannot reach server at ${getCalculatedApiBaseUrl()}. Please verify your Wi-Fi or tap Server Settings below.`
+          `Server offline. You can tap "⚡ Work in Offline Mode" below to bill without internet, or check Wi-Fi/Server Settings.`
         );
       } else {
         setErrorMessage(
@@ -269,19 +336,26 @@ export const Login: React.FC<LoginProps> = ({ onLoginSuccess }) => {
             </button>
           </div>
 
-          {/* Offline Entry Button if user was previously logged in */}
-          {cachedUser && (
-            <div className="pt-2">
-              <button
-                type="button"
-                onClick={() => onLoginSuccess(cachedUser)}
-                className="w-full py-2 px-3 bg-amber-50 hover:bg-amber-100 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer shadow-2xs active:scale-98"
-                title="Log in using locally cached account credentials when offline"
-              >
-                <span>⚡ Enter Offline Mode as {cachedUser.fullName || cachedUser.username}</span>
-              </button>
-            </div>
-          )}
+          {/* Universal Offline Entry Button (No Internet Needed) */}
+          <div className="pt-2">
+            <button
+              type="button"
+              onClick={() => {
+                const targetUser = cachedUser || DEFAULT_OFFLINE_ACCOUNTS.navin.user;
+                localStorage.setItem('distributor_auth_user', JSON.stringify(targetUser));
+                onLoginSuccess(targetUser);
+              }}
+              className="w-full py-2.5 px-3 bg-gradient-to-r from-amber-50 via-amber-100/70 to-amber-50 hover:from-amber-100 hover:to-amber-200 border border-amber-300 text-amber-900 rounded-xl text-xs font-bold transition flex items-center justify-center gap-2 cursor-pointer shadow-2xs active:scale-98"
+              title="Work completely offline without any internet connection"
+            >
+              <WifiOff className="w-3.5 h-3.5 text-amber-700 shrink-0" />
+              <span>
+                {cachedUser
+                  ? `⚡ Enter Offline Mode (${cachedUser.fullName || cachedUser.username})`
+                  : '⚡ Work in Offline Mode (No Internet Needed)'}
+              </span>
+            </button>
+          </div>
 
           {/* Server Connection Bar */}
           <div className="pt-2 flex items-center justify-between text-[11px] text-slate-500 border-t border-slate-100">
