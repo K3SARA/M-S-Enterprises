@@ -34,6 +34,7 @@ const DEFAULT_OFFLINE_ACCOUNTS: Record<string, { password: string; user: User }>
       username: 'navin',
       fullName: 'Navin (Sales Rep)',
       role: 'REP',
+      status: 'ACTIVE',
       phone: '0773669913',
       lorryId: 'lorry-1',
       lorry: {
@@ -53,6 +54,7 @@ const DEFAULT_OFFLINE_ACCOUNTS: Record<string, { password: string; user: User }>
       username: 'admin',
       fullName: 'Managing Director',
       role: 'ADMIN',
+      status: 'ACTIVE',
       phone: '0707077551'
     }
   },
@@ -63,6 +65,7 @@ const DEFAULT_OFFLINE_ACCOUNTS: Record<string, { password: string; user: User }>
       username: 'supplier',
       fullName: 'Ceylon Agro Suppliers',
       role: 'SUPPLIER',
+      status: 'ACTIVE',
       supplierId: 'sup-1',
       supplier: {
         id: 'sup-1',

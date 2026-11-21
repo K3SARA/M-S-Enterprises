@@ -1,7 +1,15 @@
-import React, { useRef } from 'react';
-import { X, Printer, CheckCircle2 } from 'lucide-react';
+import React, { useRef, useState } from 'react';
+import { X, Printer, CheckCircle2, Bluetooth, Loader2, Check } from 'lucide-react';
 import { CustomerPayment, Customer } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
+import {
+  executeSystemPrint,
+  printPaymentReceiptToBluetooth,
+  build80mmEscPosPaymentReceipt,
+  getLastUsedPrinter
+} from '../utils/bluetoothPrinter';
+import { BluetoothPrinterModal } from './BluetoothPrinterModal';
+import { Capacitor } from '@capacitor/core';
 
 interface CustomerReceiptModalProps {
   payment: CustomerPayment | null;
@@ -19,10 +27,63 @@ export const CustomerReceiptModal: React.FC<CustomerReceiptModalProps> = ({
   const { formatMoney } = useCurrency();
   const receiptRef = useRef<HTMLDivElement>(null);
 
+  const [btStatus, setBtStatus] = useState<string | null>(null);
+  const [btLoading, setBtLoading] = useState(false);
+  const [btSuccess, setBtSuccess] = useState(false);
+  const [showBtPicker, setShowBtPicker] = useState(false);
+  const [receiptBytes, setReceiptBytes] = useState<Uint8Array | null>(null);
+
   if (!isOpen || !payment) return null;
 
   const handlePrint = () => {
-    window.print();
+    executeSystemPrint();
+  };
+
+  const handleBluetoothPrint = async () => {
+    if (!payment) return;
+    const bytes = build80mmEscPosPaymentReceipt(payment);
+    setReceiptBytes(bytes);
+
+    if (Capacitor.isNativePlatform()) {
+      const last = getLastUsedPrinter();
+      if (!last) {
+        setShowBtPicker(true);
+        return;
+      }
+    }
+
+    setBtLoading(true);
+    setBtStatus('Connecting Bluetooth printer...');
+    setBtSuccess(false);
+
+    try {
+      const result = await printPaymentReceiptToBluetooth(
+        payment,
+        null,
+        (status) => setBtStatus(status)
+      );
+
+      if (result.success) {
+        setBtSuccess(true);
+        setTimeout(() => {
+          setBtStatus(null);
+          setBtLoading(false);
+          setBtSuccess(false);
+        }, 3000);
+      } else if (result.needsPicker) {
+        setBtLoading(false);
+        setBtStatus(null);
+        setShowBtPicker(true);
+      } else {
+        setBtLoading(false);
+        setBtStatus(result.message);
+        setTimeout(() => setBtStatus(null), 4000);
+      }
+    } catch (err: any) {
+      setBtLoading(false);
+      setBtStatus(err?.message || 'Bluetooth printing failed');
+      setTimeout(() => setBtStatus(null), 4000);
+    }
   };
 
   const cust = customer || payment.customer;
@@ -154,25 +215,77 @@ export const CustomerReceiptModal: React.FC<CustomerReceiptModalProps> = ({
           </div>
         </div>
 
+        {/* Live Bluetooth Status Banner */}
+        {btStatus && (
+          <div className={`px-4 py-2 text-xs font-medium flex items-center gap-2 border-t print:hidden ${
+            btSuccess
+              ? 'bg-emerald-50 text-emerald-800'
+              : 'bg-indigo-50 text-indigo-800'
+          }`}>
+            {btSuccess ? (
+              <Check className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+            ) : (
+              <Bluetooth className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+            )}
+            <span className="truncate">{btStatus}</span>
+          </div>
+        )}
+
         {/* Footer Actions */}
-        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2.5 print:hidden">
+        <div className="p-4 bg-slate-50 border-t border-slate-100 flex items-center justify-end gap-2 print:hidden">
           <button
             type="button"
             onClick={onClose}
-            className="px-4 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition"
+            className="px-3.5 py-2 rounded-xl text-xs font-bold text-slate-600 hover:bg-slate-200 transition cursor-pointer"
           >
             Close
           </button>
+
+          <button
+            type="button"
+            onClick={handleBluetoothPrint}
+            disabled={btLoading}
+            className="px-3.5 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
+          >
+            {btLoading ? (
+              <Loader2 className="w-3.5 h-3.5 animate-spin" />
+            ) : (
+              <Bluetooth className="w-3.5 h-3.5" />
+            )}
+            <span>Bluetooth 80mm</span>
+          </button>
+
           <button
             type="button"
             onClick={handlePrint}
-            className="px-5 py-2 bg-[#0071E3] hover:bg-blue-600 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-2"
+            className="px-4 py-2 bg-[#0071E3] hover:bg-blue-600 active:scale-[0.98] text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1.5 cursor-pointer"
           >
             <Printer className="w-3.5 h-3.5" />
             <span>Print Receipt</span>
           </button>
         </div>
       </div>
+
+      {/* Bluetooth Printer Device Picker Modal */}
+      <BluetoothPrinterModal
+        isOpen={showBtPicker}
+        onClose={() => setShowBtPicker(false)}
+        rawBytes={receiptBytes || undefined}
+        onSelectAndPrint={async (address) => {
+          if (!payment) return;
+          const res = await printPaymentReceiptToBluetooth(
+            payment,
+            null,
+            undefined,
+            address
+          );
+          if (!res.success) {
+            throw new Error(res.message);
+          }
+          setBtSuccess(true);
+          setTimeout(() => setBtSuccess(false), 3000);
+        }}
+      />
     </div>
   );
 };

@@ -83,7 +83,7 @@ export async function testServerUrl(url: string): Promise<{ success: boolean; me
       return { success: true, message: 'Connected to M&S Server (Status 200 OK)' };
     }
     return { success: false, message: `Server replied with status ${res.status}` };
-  } catch (err) {
+  } catch (err: any) {
     return { success: false, message: (err && err.message) || 'Connection refused or timed out' };
   }
 }

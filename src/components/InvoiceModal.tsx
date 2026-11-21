@@ -6,14 +6,20 @@ import {
   FileText,
   Check,
   Loader2,
-  Smartphone
+  Smartphone,
+  Settings
 } from 'lucide-react';
 import { Order, SystemSettings } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
 import { OrderService, SettingsService } from '../services/api';
 import {
-  printToBluetoothThermalPrinter
+  printToBluetoothThermalPrinter,
+  executeSystemPrint,
+  build80mmEscPosReceipt,
+  getLastUsedPrinter
 } from '../utils/bluetoothPrinter';
+import { BluetoothPrinterModal } from './BluetoothPrinterModal';
+import { Capacitor } from '@capacitor/core';
 
 interface InvoiceModalProps {
   order: Order | null;
@@ -32,6 +38,8 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const [btStatus, setBtStatus] = useState<string | null>(null);
   const [btLoading, setBtLoading] = useState<boolean>(false);
   const [btSuccess, setBtSuccess] = useState<boolean>(false);
+  const [showBtPicker, setShowBtPicker] = useState<boolean>(false);
+  const [receiptBytes, setReceiptBytes] = useState<Uint8Array | null>(null);
   const [loadedOrder, setLoadedOrder] = useState<Order | null>(order);
   const [loadingDetails, setLoadingDetails] = useState<boolean>(false);
 
@@ -66,13 +74,24 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
   const lorry = activeOrder.lorry;
 
   const handleSystemPrint = () => {
-    window.print();
+    executeSystemPrint();
   };
 
   const handleBluetoothPrint = async () => {
     if (!activeOrder) return;
+    const bytes = build80mmEscPosReceipt(activeOrder, companySettings);
+    setReceiptBytes(bytes);
+
+    if (Capacitor.isNativePlatform()) {
+      const last = getLastUsedPrinter();
+      if (!last) {
+        setShowBtPicker(true);
+        return;
+      }
+    }
+
     setBtLoading(true);
-    setBtStatus('Initializing Bluetooth...');
+    setBtStatus('Connecting Bluetooth printer...');
     setBtSuccess(false);
 
     try {
@@ -88,10 +107,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           setBtStatus(null);
           setBtLoading(false);
           setBtSuccess(false);
-        }, 3500);
+        }, 3000);
+      } else if (result.needsPicker) {
+        setBtLoading(false);
+        setBtStatus(null);
+        setShowBtPicker(true);
       } else {
         setBtLoading(false);
-        // If device was not selected or not supported, keep message for 4s
+        setBtStatus(result.message);
         setTimeout(() => setBtStatus(null), 4000);
       }
     } catch (err: any) {
@@ -170,6 +193,23 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                 {btLoading ? 'Printing...' : btSuccess ? 'Printed!' : 'Bluetooth Print'}
               </span>
             </button>
+
+            {/* Select / Change Bluetooth Printer Modal trigger */}
+            {Capacitor.isNativePlatform() && (
+              <button
+                type="button"
+                onClick={() => {
+                  if (activeOrder) {
+                    setReceiptBytes(build80mmEscPosReceipt(activeOrder, companySettings));
+                  }
+                  setShowBtPicker(true);
+                }}
+                className="p-1.5 text-slate-500 hover:text-indigo-600 rounded-xl hover:bg-indigo-50 border border-slate-200 transition cursor-pointer"
+                title="Select or Switch Paired Bluetooth Thermal Printer"
+              >
+                <Settings className="w-3.5 h-3.5 text-indigo-600" />
+              </button>
+            )}
 
             {/* Standard System Print Button */}
             <button
@@ -747,6 +787,27 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
           )}
         </div>
       </div>
+
+      {/* Bluetooth Printer Device Picker Modal */}
+      <BluetoothPrinterModal
+        isOpen={showBtPicker}
+        onClose={() => setShowBtPicker(false)}
+        rawBytes={receiptBytes || undefined}
+        onSelectAndPrint={async (address) => {
+          if (!activeOrder) return;
+          const res = await printToBluetoothThermalPrinter(
+            activeOrder,
+            companySettings,
+            undefined,
+            address
+          );
+          if (!res.success) {
+            throw new Error(res.message);
+          }
+          setBtSuccess(true);
+          setTimeout(() => setBtSuccess(false), 3000);
+        }}
+      />
     </div>
   );
 };

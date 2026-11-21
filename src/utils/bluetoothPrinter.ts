@@ -6,7 +6,61 @@
  * 3. Fallback to System Print Spooler / Android Bluetooth Print Services (RawBT, Bluetooth Print)
  */
 
-import { Order, SystemSettings } from '../types';
+import { Order, SystemSettings, CustomerPayment } from '../types';
+import { registerPlugin, Capacitor } from '@capacitor/core';
+
+export interface BluetoothDeviceInfo {
+  name: string;
+  address: string;
+  isPrinter?: boolean;
+}
+
+export interface BluetoothPrinterPluginInterface {
+  isAvailable(): Promise<{ supported: boolean; enabled: boolean; hasPermission: boolean }>;
+  getPairedDevices(): Promise<{ devices: BluetoothDeviceInfo[] }>;
+  printBytes(options: { address: string; bytesBase64: string }): Promise<{ success: boolean; message: string }>;
+  printRawBt(options: { bytesBase64: string }): Promise<{ success: boolean; message: string }>;
+  printSystem(): Promise<{ success: boolean }>;
+}
+
+export const NativeBluetoothPrinter = registerPlugin<BluetoothPrinterPluginInterface>('BluetoothPrinter');
+
+export function uint8ArrayToBase64(bytes: Uint8Array): string {
+  let binary = '';
+  const len = bytes.byteLength;
+  for (let i = 0; i < len; i++) {
+    binary += String.fromCharCode(bytes[i]);
+  }
+  return btoa(binary);
+}
+
+export function getLastUsedPrinter(): { address: string; name: string } | null {
+  try {
+    const address = localStorage.getItem('ms_last_bt_printer_address');
+    const name = localStorage.getItem('ms_last_bt_printer_name') || 'Bluetooth Printer';
+    if (address) return { address, name };
+  } catch {}
+  return null;
+}
+
+export function saveLastUsedPrinter(address: string, name: string): void {
+  try {
+    localStorage.setItem('ms_last_bt_printer_address', address);
+    localStorage.setItem('ms_last_bt_printer_name', name);
+  } catch {}
+}
+
+export async function executeSystemPrint(): Promise<void> {
+  if (Capacitor.isNativePlatform()) {
+    try {
+      await NativeBluetoothPrinter.printSystem();
+      return;
+    } catch (e) {
+      console.warn('Native printSystem failed, fallback to window.print', e);
+    }
+  }
+  window.print();
+}
 
 // Standard 80mm thermal receipt character width (Font A: 42-48 chars, using 42 for safe margins)
 const RECEIPT_WIDTH = 42;
@@ -459,16 +513,172 @@ export function build80mmEscPosBillsSummary(
 }
 
 /**
- * Shared helper to send ESC/POS byte array to Bluetooth printer
+ * Build ESC/POS Byte Buffer for 80mm Official Payment Collection Receipt
+ */
+export function build80mmEscPosPaymentReceipt(
+  payment: CustomerPayment,
+  settings?: SystemSettings | null
+): Uint8Array {
+  const chunks: number[] = [];
+  const addBytes = (bytes: number[]) => { for (const b of bytes) chunks.push(b); };
+  const addText = (text: string) => {
+    const encoded = encodeText(text);
+    for (let i = 0; i < encoded.length; i++) chunks.push(encoded[i]);
+  };
+  const addLine = (text = '') => {
+    addText(text);
+    addBytes(COMMANDS.LINE_FEED);
+  };
+
+  addBytes(COMMANDS.INIT);
+  addBytes(COMMANDS.ALIGN_CENTER);
+  addBytes(COMMANDS.DOUBLE_SIZE);
+  addBytes(COMMANDS.BOLD_ON);
+  addLine(settings?.companyName || 'M&S Enterprises');
+  addBytes(COMMANDS.NORMAL_SIZE);
+  addBytes(COMMANDS.BOLD_OFF);
+  addLine(settings?.address || '115/1A1, Udumulla Road, Himbutana, Angoda');
+  addLine(`Tel: ${settings?.phone || '0773669913 / 0707077551'}`);
+  addLine(dividerLine('='));
+  addBytes(COMMANDS.BOLD_ON);
+  addLine('*** OFFICIAL PAYMENT RECEIPT ***');
+  addBytes(COMMANDS.BOLD_OFF);
+  addLine(dividerLine('='));
+
+  addBytes(COMMANDS.ALIGN_LEFT);
+  const dateStr = new Date(payment.createdAt).toLocaleDateString();
+  const timeStr = new Date(payment.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' });
+  addLine(padTwoColumns(`Date: ${dateStr} ${timeStr}`, `Receipt #: ${payment.receiptNumber}`));
+  addLine(dividerLine('-'));
+
+  addBytes(COMMANDS.BOLD_ON);
+  addLine(`Customer: ${payment.customer?.name || 'Customer'} [${payment.customer?.code || ''}]`);
+  addBytes(COMMANDS.BOLD_OFF);
+  if (payment.customer?.companyName) {
+    addLine(`Shop: ${payment.customer.companyName}`);
+  }
+  addLine(dividerLine('-'));
+
+  addBytes(COMMANDS.BOLD_ON);
+  addBytes(COMMANDS.DOUBLE_HEIGHT);
+  addLine(padTwoColumns('AMOUNT RECEIVED:', `Rs.${payment.amount.toFixed(2)}`));
+  addBytes(COMMANDS.NORMAL_SIZE);
+  addBytes(COMMANDS.BOLD_OFF);
+  addLine(dividerLine('='));
+
+  addLine(padTwoColumns('Payment Mode:', payment.paymentMethod || 'CASH'));
+  if (payment.paymentMethod === 'CHEQUE') {
+    if (payment.chequeNumber) addLine(padTwoColumns('Cheque Number:', payment.chequeNumber));
+    if (payment.bankName) addLine(padTwoColumns('Bank Name:', payment.bankName));
+    if (payment.chequeDate) addLine(padTwoColumns('Cheque Date:', new Date(payment.chequeDate).toLocaleDateString()));
+  }
+
+  if (payment.notes) {
+    addLine(`Remarks: ${payment.notes}`);
+  }
+
+  addLine(dividerLine('-'));
+  addBytes(COMMANDS.ALIGN_CENTER);
+  addLine('Thank you for your prompt settlement!');
+  addLine('');
+  addBytes(COMMANDS.ALIGN_LEFT);
+  addLine(padTwoColumns('Collector Sign:', 'Customer Seal / Sign:'));
+  addLine('');
+  addLine(padTwoColumns('____________________', '____________________'));
+  addLine('');
+  addBytes(COMMANDS.ALIGN_CENTER);
+  addLine('Powered By J&co. Software Solution');
+  addLine('+94 77 065 4279');
+  addLine(dividerLine('.'));
+  addBytes(COMMANDS.PAPER_FEED_5);
+  addBytes(COMMANDS.PARTIAL_CUT);
+
+  return new Uint8Array(chunks);
+}
+
+/**
+ * Shared helper to send ESC/POS byte array to Bluetooth printer (Android Native + Web Bluetooth)
  */
 export async function sendEscPosToBluetoothDevice(
   receiptData: Uint8Array,
-  onStatusChange?: (status: string) => void
-): Promise<{ success: boolean; message: string }> {
+  onStatusChange?: (status: string) => void,
+  targetAddress?: string
+): Promise<{ success: boolean; message: string; needsPicker?: boolean; devices?: BluetoothDeviceInfo[] }> {
+  // 1. Android Native Bluetooth SPP Printing
+  if (Capacitor.isNativePlatform()) {
+    try {
+      onStatusChange?.('Checking Bluetooth...');
+      const avail = await NativeBluetoothPrinter.isAvailable();
+      if (!avail.supported) {
+        return { success: false, message: 'Bluetooth hardware not detected on this device.' };
+      }
+      if (!avail.enabled) {
+        return { success: false, message: 'Bluetooth is turned off. Please turn on Bluetooth in Android settings.' };
+      }
+
+      onStatusChange?.('Scanning paired printers...');
+      const pairedRes = await NativeBluetoothPrinter.getPairedDevices();
+      const devices = pairedRes.devices || [];
+
+      if (devices.length === 0) {
+        return {
+          success: false,
+          needsPicker: true,
+          devices: [],
+          message: 'No paired Bluetooth devices found. Please pair your 80mm printer in phone Bluetooth settings (PIN: 0000 or 1234).'
+        };
+      }
+
+      let chosenDevice: BluetoothDeviceInfo | undefined;
+
+      if (targetAddress) {
+        chosenDevice = devices.find(d => d.address === targetAddress);
+      } else {
+        const last = getLastUsedPrinter();
+        if (last) {
+          chosenDevice = devices.find(d => d.address === last.address);
+        }
+        if (!chosenDevice) {
+          chosenDevice = devices.find(d => d.isPrinter);
+        }
+        if (!chosenDevice && devices.length === 1) {
+          chosenDevice = devices[0];
+        }
+      }
+
+      if (!chosenDevice) {
+        return {
+          success: false,
+          needsPicker: true,
+          devices,
+          message: 'Please select your Bluetooth printer from the list.'
+        };
+      }
+
+      onStatusChange?.(`Connecting to ${chosenDevice.name || 'Printer'}...`);
+      const base64Data = uint8ArrayToBase64(receiptData);
+      const printRes = await NativeBluetoothPrinter.printBytes({
+        address: chosenDevice.address,
+        bytesBase64: base64Data
+      });
+
+      saveLastUsedPrinter(chosenDevice.address, chosenDevice.name);
+      onStatusChange?.('Printed successfully!');
+      return { success: true, message: printRes.message || `Printed to ${chosenDevice.name}!` };
+    } catch (nativeErr: any) {
+      console.error('Native Bluetooth print error:', nativeErr);
+      return {
+        success: false,
+        message: nativeErr?.message || 'Bluetooth printing failed. Please check printer power and pairing.'
+      };
+    }
+  }
+
+  // 2. Web Browser Fallback (Chrome Web Bluetooth)
   if (!isWebBluetoothSupported()) {
     return {
       success: false,
-      message: 'Web Bluetooth is not supported on this browser. Please use the System Print option.'
+      message: 'Web Bluetooth is not supported on this browser. Please use System Print.'
     };
   }
 
@@ -547,7 +757,7 @@ export async function sendEscPosToBluetoothDevice(
       await new Promise(r => setTimeout(r, 25));
     }
 
-    onStatusChange?.('Summary printed successfully!');
+    onStatusChange?.('Printed successfully!');
 
     setTimeout(() => {
       try {
@@ -574,11 +784,12 @@ export async function sendEscPosToBluetoothDevice(
 export async function printToBluetoothThermalPrinter(
   order: Order,
   settings?: SystemSettings | null,
-  onStatusChange?: (status: string) => void
-): Promise<{ success: boolean; message: string }> {
+  onStatusChange?: (status: string) => void,
+  targetAddress?: string
+): Promise<{ success: boolean; message: string; needsPicker?: boolean; devices?: BluetoothDeviceInfo[] }> {
   try {
     const receiptData = build80mmEscPosReceipt(order, settings);
-    return await sendEscPosToBluetoothDevice(receiptData, onStatusChange);
+    return await sendEscPosToBluetoothDevice(receiptData, onStatusChange, targetAddress);
   } catch (err: any) {
     return { success: false, message: err?.message || 'Bluetooth printing failed' };
   }
@@ -590,11 +801,29 @@ export async function printToBluetoothThermalPrinter(
 export async function printBillsSummaryToBluetooth(
   data: RepBillsSummaryData,
   settings?: SystemSettings | null,
-  onStatusChange?: (status: string) => void
-): Promise<{ success: boolean; message: string }> {
+  onStatusChange?: (status: string) => void,
+  targetAddress?: string
+): Promise<{ success: boolean; message: string; needsPicker?: boolean; devices?: BluetoothDeviceInfo[] }> {
   try {
     const summaryBytes = build80mmEscPosBillsSummary(data, settings);
-    return await sendEscPosToBluetoothDevice(summaryBytes, onStatusChange);
+    return await sendEscPosToBluetoothDevice(summaryBytes, onStatusChange, targetAddress);
+  } catch (err: any) {
+    return { success: false, message: err?.message || 'Bluetooth printing failed' };
+  }
+}
+
+/**
+ * Direct Print Customer Payment Collection Voucher to Bluetooth Thermal Printer
+ */
+export async function printPaymentReceiptToBluetooth(
+  payment: CustomerPayment,
+  settings?: SystemSettings | null,
+  onStatusChange?: (status: string) => void,
+  targetAddress?: string
+): Promise<{ success: boolean; message: string; needsPicker?: boolean; devices?: BluetoothDeviceInfo[] }> {
+  try {
+    const receiptBytes = build80mmEscPosPaymentReceipt(payment, settings);
+    return await sendEscPosToBluetoothDevice(receiptBytes, onStatusChange, targetAddress);
   } catch (err: any) {
     return { success: false, message: err?.message || 'Bluetooth printing failed' };
   }

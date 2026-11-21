@@ -13,8 +13,13 @@ import { useCurrency } from '../context/CurrencyContext';
 import { SettingsService } from '../services/api';
 import {
   printBillsSummaryToBluetooth,
+  build80mmEscPosBillsSummary,
+  executeSystemPrint,
+  getLastUsedPrinter,
   RepBillsSummaryData
 } from '../utils/bluetoothPrinter';
+import { BluetoothPrinterModal } from './BluetoothPrinterModal';
+import { Capacitor } from '@capacitor/core';
 
 interface RepBillsSummaryModalProps {
   isOpen: boolean;
@@ -54,6 +59,8 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
   const [btStatus, setBtStatus] = useState<string | null>(null);
   const [btLoading, setBtLoading] = useState<boolean>(false);
   const [btSuccess, setBtSuccess] = useState<boolean>(false);
+  const [showBtPicker, setShowBtPicker] = useState<boolean>(false);
+  const [summaryBytes, setSummaryBytes] = useState<Uint8Array | null>(null);
 
   useEffect(() => {
     if (isOpen) {
@@ -142,25 +149,37 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
   if (!isOpen) return null;
 
   const handleSystemPrint = () => {
-    window.print();
+    executeSystemPrint();
   };
 
-  const handleBluetoothPrint = async () => {
-    setBtLoading(true);
-    setBtStatus('Initializing Bluetooth...');
-    setBtSuccess(false);
+  const buildSummaryPayload = (): RepBillsSummaryData => ({
+    repName: user?.fullName || 'Sales Rep',
+    repPhone: user?.phone || undefined,
+    vehicleNumber: lorry?.vehicleNumber || 'Route Lorry',
+    routeName: lorry?.route?.name || lorry?.route?.code || undefined,
+    driverName: lorry?.driverName || undefined,
+    filterLabel: selectedScope === 'FILTERED' ? activeFilter : 'ALL',
+    bills: activeBills,
+    summary: summaryMetrics,
+    productSummary
+  });
 
-    const summaryData: RepBillsSummaryData = {
-      repName: user?.fullName || 'Sales Rep',
-      repPhone: user?.phone || undefined,
-      vehicleNumber: lorry?.vehicleNumber || 'Route Lorry',
-      routeName: lorry?.route?.name || lorry?.route?.code || undefined,
-      driverName: lorry?.driverName || undefined,
-      filterLabel: selectedScope === 'FILTERED' ? activeFilter : 'ALL',
-      bills: activeBills,
-      summary: summaryMetrics,
-      productSummary
-    };
+  const handleBluetoothPrint = async () => {
+    const summaryData = buildSummaryPayload();
+    const bytes = build80mmEscPosBillsSummary(summaryData, companySettings);
+    setSummaryBytes(bytes);
+
+    if (Capacitor.isNativePlatform()) {
+      const last = getLastUsedPrinter();
+      if (!last) {
+        setShowBtPicker(true);
+        return;
+      }
+    }
+
+    setBtLoading(true);
+    setBtStatus('Connecting Bluetooth printer...');
+    setBtSuccess(false);
 
     try {
       const result = await printBillsSummaryToBluetooth(
@@ -175,9 +194,14 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
           setBtStatus(null);
           setBtLoading(false);
           setBtSuccess(false);
-        }, 3500);
+        }, 3000);
+      } else if (result.needsPicker) {
+        setBtLoading(false);
+        setBtStatus(null);
+        setShowBtPicker(true);
       } else {
         setBtLoading(false);
+        setBtStatus(result.message);
         setTimeout(() => setBtStatus(null), 4000);
       }
     } catch (err: any) {
@@ -595,6 +619,27 @@ export const RepBillsSummaryModal: React.FC<RepBillsSummaryModalProps> = ({
           </div>
         </div>
       </div>
+
+      {/* Bluetooth Printer Device Picker Modal */}
+      <BluetoothPrinterModal
+        isOpen={showBtPicker}
+        onClose={() => setShowBtPicker(false)}
+        rawBytes={summaryBytes || undefined}
+        onSelectAndPrint={async (address) => {
+          const summaryData = buildSummaryPayload();
+          const res = await printBillsSummaryToBluetooth(
+            summaryData,
+            companySettings,
+            undefined,
+            address
+          );
+          if (!res.success) {
+            throw new Error(res.message);
+          }
+          setBtSuccess(true);
+          setTimeout(() => setBtSuccess(false), 3000);
+        }}
+      />
     </div>
   );
 };

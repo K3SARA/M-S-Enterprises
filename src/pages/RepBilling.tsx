@@ -73,6 +73,7 @@ import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal
 import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
 import { OfflineSyncService, QueuedOfflineBill } from '../services/offlineSync';
+import { executeSystemPrint } from '../utils/bluetoothPrinter';
 
 interface CartItem {
   productId: string;
@@ -856,7 +857,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const handlePrintStock = () => {
     const printWindow = window.open('', '_blank');
     if (!printWindow) {
-      alert('Pop-up blocked. Please allow pop-ups to print stock list.');
+      executeSystemPrint();
       return;
     }
     const html = `
