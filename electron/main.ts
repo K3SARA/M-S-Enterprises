@@ -1,5 +1,6 @@
 import { app, BrowserWindow, ipcMain, shell } from 'electron';
 import * as path from 'path';
+import * as fs from 'fs';
 import { fork, ChildProcess } from 'child_process';
 
 let mainWindow: BrowserWindow | null = null;
@@ -9,17 +10,37 @@ const isDev = process.env.NODE_ENV !== 'production' && !app.isPackaged;
 
 function startBackendServer() {
   try {
-    const serverScript = isDev
-      ? path.join(__dirname, '../../server/index.ts')
-      : path.join(__dirname, '../../server/index.js');
+    const isPackaged = app.isPackaged;
+    const appRoot = isPackaged ? app.getAppPath() : path.join(__dirname, '../..');
+    const serverScript = isPackaged
+      ? path.join(appRoot, 'dist-server/index.js')
+      : path.join(__dirname, '../../dist-server/index.js');
 
-    const dbPath = path.join(app.getPath('userData'), 'distributor.db');
+    const dbDir = app.getPath('userData');
+    if (!fs.existsSync(dbDir)) {
+      fs.mkdirSync(dbDir, { recursive: true });
+    }
+    const dbPath = path.join(dbDir, 'distributor.db');
 
-    // In dev mode, tsx can be used or we run backend in npm script
+    // Seed initial database if it doesn't exist
+    const defaultTemplateDb = isPackaged
+      ? path.join(appRoot, 'prisma/distributor.db')
+      : path.join(__dirname, '../../prisma/distributor.db');
+
+    if (!fs.existsSync(dbPath) && fs.existsSync(defaultTemplateDb)) {
+      try {
+        fs.copyFileSync(defaultTemplateDb, dbPath);
+        console.log('[Electron] Initialized database from template at:', dbPath);
+      } catch (copyErr) {
+        console.error('[Electron] Failed to copy template database:', copyErr);
+      }
+    }
+
     if (!isDev) {
       serverProcess = fork(serverScript, [], {
         env: {
           ...process.env,
+          ELECTRON_RUN_AS_NODE: '1',
           DATABASE_URL: `file:${dbPath}`,
           PORT: '4812'
         }
@@ -57,7 +78,10 @@ function createWindow() {
     mainWindow.loadURL(devUrl);
     // mainWindow.webContents.openDevTools();
   } else {
-    mainWindow.loadFile(path.join(__dirname, '../../dist/index.html'));
+    const indexPath = app.isPackaged
+      ? path.join(app.getAppPath(), 'dist/index.html')
+      : path.join(__dirname, '../../dist/index.html');
+    mainWindow.loadFile(indexPath);
   }
 
   mainWindow.on('closed', () => {

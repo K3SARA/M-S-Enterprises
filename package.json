@@ -12,9 +12,11 @@
     "dev:electron": "node node_modules/electron/cli.js .",
     "dev": "node node_modules/concurrently/dist/bin/concurrently.js -k -n \"SERVER,VITE\" -c \"blue,green\" \"npm run dev:server\" \"npm run dev:vite\"",
     "build:electron": "node node_modules/typescript/bin/tsc -p tsconfig.electron.json",
+    "build:server": "node node_modules/esbuild/bin/esbuild server/index.ts --bundle --platform=node --target=node20 --outfile=dist-server/index.js --external:@prisma/client --external:prisma",
     "build:vite": "node node_modules/vite/bin/vite.js build",
     "build": "node scripts/prepare-prisma.js && node node_modules/vite/bin/vite.js build && node node_modules/prisma/build/index.js generate",
-    "build:all": "node scripts/prepare-prisma.js && node node_modules/vite/bin/vite.js build && node node_modules/prisma/build/index.js generate && npm run build:electron",
+    "build:all": "node scripts/prepare-prisma.js && node node_modules/vite/bin/vite.js build && node node_modules/prisma/build/index.js generate && npm run build:electron && npm run build:server",
+    "dist:win": "node scripts/prepare-prisma.js && npm run build:vite && npm run build:electron && npm run build:server && node node_modules/electron-builder/cli.js --win --x64",
     "start": "node scripts/prepare-prisma.js && node node_modules/prisma/build/index.js db push --accept-data-loss && node node_modules/tsx/dist/cli.mjs server/index.ts",
     "start:electron": "node node_modules/cross-env/src/bin/cross-env.js NODE_ENV=production node node_modules/electron/cli.js .",
     "prisma:generate": "node node_modules/prisma/build/index.js generate",
@@ -56,5 +58,45 @@
     "cross-env": "^7.0.3",
     "electron": "^33.2.1",
     "electron-builder": "^25.1.8"
+  },
+  "build": {
+    "appId": "com.msenterprises.distributor",
+    "productName": "M&S Enterprises",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "dist/**/*",
+      "electron/dist/**/*",
+      "dist-server/**/*",
+      "prisma/distributor.db",
+      "prisma/schema.prisma",
+      "node_modules/@prisma/**/*",
+      "node_modules/.prisma/**/*",
+      "package.json"
+    ],
+    "asar": true,
+    "asarUnpack": [
+      "**/node_modules/@prisma/**/*",
+      "**/node_modules/.prisma/**/*",
+      "**/*.node"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ]
+    },
+    "nsis": {
+      "oneClick": false,
+      "allowToChangeInstallationDirectory": true,
+      "createDesktopShortcut": true,
+      "createStartMenuShortcut": true,
+      "shortcutName": "M&S Enterprises"
+    }
   }
 }

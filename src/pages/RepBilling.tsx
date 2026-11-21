@@ -45,7 +45,9 @@ import {
   Boxes,
   Package,
   ArrowLeftRight,
-  Lock
+  Lock,
+  Wifi,
+  WifiOff
 } from 'lucide-react';
 import {
   Customer,
@@ -70,6 +72,7 @@ import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
 import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal';
 import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
+import { OfflineSyncService, QueuedOfflineBill } from '../services/offlineSync';
 
 interface CartItem {
   productId: string;
@@ -202,6 +205,70 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [stockSortFilter, setStockSortFilter] = useState<'STOCK_DESC' | 'STOCK_ASC' | 'NAME' | 'PRICE'>('STOCK_DESC');
   const [stockPageToast, setStockPageToast] = useState<string | null>(null);
   const [isRefreshingStock, setIsRefreshingStock] = useState<boolean>(false);
+
+  // Offline Billing & Auto-Sync Engine
+  const [isOnline, setIsOnline] = useState<boolean>(() => OfflineSyncService.isOnline());
+  const [pendingBillsCount, setPendingBillsCount] = useState<number>(() => OfflineSyncService.getPendingBills().length);
+  const [isSyncing, setIsSyncing] = useState<boolean>(false);
+  const [syncStatusToast, setSyncStatusToast] = useState<string | null>(null);
+
+  const handleSyncPending = async () => {
+    const pending = OfflineSyncService.getPendingBills();
+    if (pending.length === 0 || isSyncing) return;
+
+    setIsSyncing(true);
+    setSyncStatusToast(`🔄 Syncing ${pending.length} offline bill(s)...`);
+
+    try {
+      const res = await OfflineSyncService.syncAllPendingBills();
+      const remaining = OfflineSyncService.getPendingBills().length;
+      setPendingBillsCount(remaining);
+
+      if (res.syncedCount > 0) {
+        setSyncStatusToast(`✓ Synced ${res.syncedCount} bill(s) with central server!`);
+        setTimeout(() => setSyncStatusToast(null), 3500);
+        loadTargets(selectedLorryId || undefined);
+        loadFinishedBills(selectedLorryId || undefined);
+      } else if (res.errors.length > 0) {
+        setSyncStatusToast(`⚠️ Sync failed for ${res.errors.length} bill(s). Check connection.`);
+        setTimeout(() => setSyncStatusToast(null), 4000);
+      } else {
+        setSyncStatusToast(null);
+      }
+    } catch (err) {
+      console.warn('[Sync Error]', err);
+      setSyncStatusToast('⚠️ Sync error. Will auto-retry.');
+      setTimeout(() => setSyncStatusToast(null), 3500);
+    } finally {
+      setIsSyncing(false);
+    }
+  };
+
+  useEffect(() => {
+    const onOnline = () => {
+      setIsOnline(true);
+      handleSyncPending();
+    };
+    const onOffline = () => {
+      setIsOnline(false);
+    };
+
+    window.addEventListener('online', onOnline);
+    window.addEventListener('offline', onOffline);
+
+    // Check every 30 seconds if bills are pending and we are online
+    const timer = setInterval(() => {
+      if (OfflineSyncService.isOnline() && OfflineSyncService.getPendingBills().length > 0 && !isSyncing) {
+        handleSyncPending();
+      }
+    }, 30000);
+
+    return () => {
+      window.removeEventListener('online', onOnline);
+      window.removeEventListener('offline', onOffline);
+      clearInterval(timer);
+    };
+  }, []);
 
   // Next Stop Hero Card Minimized State (toggled via ••• button next to Next Stop badge)
   const [isNextStopMinimized, setIsNextStopMinimized] = useState<boolean>(() => {
@@ -644,9 +711,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         LorryService.getAll()
       ]);
 
+      const activeProducts = prodList.filter(p => !p.isRawMaterial);
       setCustomers(custList);
-      setProducts(prodList.filter(p => !p.isRawMaterial));
+      setProducts(activeProducts);
       setLorries(lorryList);
+
+      // Save to offline cache
+      OfflineSyncService.cacheRepData({
+        customers: custList,
+        products: activeProducts,
+        lorries: lorryList,
+        lorryStockMap
+      });
 
       if (initialLorryId && lorryList.some(l => l.id === initialLorryId)) {
         setSelectedLorryId(initialLorryId);
@@ -661,7 +737,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         loadTargets();
       }
     } catch (err) {
-      console.error('Failed to load rep billing data', err);
+      console.error('Failed to load rep billing data from server, falling back to offline cache:', err);
+      const cached = OfflineSyncService.getCachedRepData();
+      if (cached && cached.customers?.length > 0) {
+        setCustomers(cached.customers);
+        setProducts(cached.products);
+        setLorries(cached.lorries);
+        if (cached.lorries.length > 0 && !selectedLorryId) {
+          setSelectedLorryId(cached.lorries[0].id);
+        }
+        setAutoCheckinToast('📶 Working offline — Using saved lorry stock & customer data');
+        setTimeout(() => setAutoCheckinToast(null), 4000);
+      }
     } finally {
       setLoading(false);
     }
@@ -1160,18 +1247,113 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       }
 
       let createdOrder: Order;
-      if (selectedLorryId) {
-        createdOrder = await LorryService.enterDriverBill(selectedLorryId, orderPayload);
+      const isCurrentlyOffline = !navigator.onLine;
+
+      const createOfflineOrder = (): Order => {
+        const queuedBill: QueuedOfflineBill = {
+          localId: `offline_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
+          orderNumber: `OFF-${Date.now().toString().slice(-6)}`,
+          lorryId: selectedLorryId || undefined,
+          payload: orderPayload,
+          createdAt: new Date().toISOString(),
+          customerName: selectedCustomer?.name || 'Customer',
+          totalAmount: finalTotal,
+          itemsCount: totalItemsCount,
+          paymentMethod
+        };
+        OfflineSyncService.saveOfflineBill(queuedBill);
+        setPendingBillsCount(OfflineSyncService.getPendingBills().length);
+
+        // Deduct from local lorry stock in memory
+        if (selectedLorryId) {
+          setLorries(prev => prev.map(l => {
+            if (l.id === selectedLorryId && Array.isArray(l.lorryStocks)) {
+              return {
+                ...l,
+                lorryStocks: l.lorryStocks.map(ls => {
+                  const cartItem = cart.find(ci => ci.productId === ls.productId);
+                  if (cartItem) {
+                    return {
+                      ...ls,
+                      quantity: Math.max(0, ls.quantity - cartItem.quantity),
+                      freeQuantity: Math.max(0, (ls.freeQuantity || 0) - (cartItem.freeQuantity || 0))
+                    };
+                  }
+                  return ls;
+                })
+              };
+            }
+            return l;
+          }));
+        }
+
+        return {
+          id: queuedBill.localId,
+          orderNumber: queuedBill.orderNumber,
+          customerId: selectedCustomerId,
+          customer: selectedCustomer!,
+          lorryId: selectedLorryId || null,
+          lorry: selectedLorry || null,
+          status: 'DELIVERED',
+          paymentStatus: paymentMethod === 'CREDIT' ? 'UNPAID' : 'PAID',
+          paymentMethod,
+          chequeNumber: chequeNumber.trim() || null,
+          bankName: bankName.trim() || null,
+          chequeDate: chequeDate || null,
+          subtotal: cartSubtotal,
+          discountAmount: (cartSubtotal * (globalDiscountPercent || 0)) / 100,
+          taxAmount: 0,
+          netTotal: finalTotal,
+          cashReceived: paymentMethod === 'CASH' ? finalTotal : 0,
+          paidAmount: paymentMethod === 'CASH' ? finalTotal : 0,
+          balanceAmount: paymentMethod === 'CREDIT' ? finalTotal : 0,
+          notes: notes.trim() || null,
+          latitude: currentGpsCoords?.lat || null,
+          longitude: currentGpsCoords?.lng || null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+          items: cart.map(item => ({
+            id: `item_${Date.now()}_${item.productId}`,
+            orderId: queuedBill.localId,
+            productId: item.productId,
+            product: products.find(p => p.id === item.productId)!,
+            quantity: item.quantity,
+            freeQuantity: item.freeQuantity || 0,
+            unitPrice: item.unitPrice,
+            lineTotal: item.unitPrice * item.quantity
+          }))
+        };
+      };
+
+      if (!isCurrentlyOffline) {
+        try {
+          if (selectedLorryId) {
+            createdOrder = await LorryService.enterDriverBill(selectedLorryId, orderPayload);
+          } else {
+            createdOrder = await OrderService.create(orderPayload);
+          }
+        } catch (apiErr: any) {
+          const isNetErr = !apiErr.response || apiErr.code === 'ERR_NETWORK' || apiErr.message?.toLowerCase().includes('network') || apiErr.message?.toLowerCase().includes('failed to fetch');
+          if (isNetErr) {
+            createdOrder = createOfflineOrder();
+          } else {
+            throw apiErr;
+          }
+        }
       } else {
-        createdOrder = await OrderService.create(orderPayload);
+        createdOrder = createOfflineOrder();
       }
 
       setCheckoutSuccessOrder(createdOrder);
-      await Promise.all([
-        loadTargets(selectedLorryId || undefined),
-        loadFinishedBills(selectedLorryId || undefined),
-        loadOptimizedRoute()
-      ]);
+      if (navigator.onLine) {
+        await Promise.all([
+          loadTargets(selectedLorryId || undefined),
+          loadFinishedBills(selectedLorryId || undefined),
+          loadOptimizedRoute()
+        ]);
+      } else {
+        setFinishedBills(prev => [createdOrder, ...prev]);
+      }
     } catch (err: any) {
       setErrorMessage(err.response?.data?.error || err.message || 'Failed to complete bill.');
     } finally {
@@ -1348,6 +1530,33 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
         {/* Right: Only 4 Ergonomic Touch Actions */}
         <div className="flex items-center gap-1.5 sm:gap-2 shrink-0">
+          {/* Offline Sync Button & Status Badge */}
+          {pendingBillsCount > 0 && (
+            <button
+              type="button"
+              onClick={handleSyncPending}
+              disabled={isSyncing}
+              className="flex items-center gap-1.5 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold bg-amber-500 hover:bg-amber-600 active:scale-95 text-white transition shadow-2xs cursor-pointer border border-amber-600 animate-pulse"
+              title={`${pendingBillsCount} offline bills ready to sync with cloud. Click to sync now.`}
+            >
+              <RefreshCw className={`w-3.5 h-3.5 ${isSyncing ? 'animate-spin' : ''}`} />
+              <span className="hidden xs:inline sm:inline">Sync</span>
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-white text-amber-700">
+                {pendingBillsCount}
+              </span>
+            </button>
+          )}
+
+          {!isOnline && (
+            <div
+              className="flex items-center gap-1 px-2 sm:px-2.5 py-1.5 rounded-xl bg-slate-800 text-amber-400 text-[11px] font-bold border border-slate-700"
+              title="No internet connection. Working in offline mode. Bills will sync when connection returns."
+            >
+              <WifiOff className="w-3.5 h-3.5 text-amber-400" />
+              <span className="hidden sm:inline">Offline</span>
+            </div>
+          )}
+
           {/* Quick Available Stock to Bill Button */}
           <button
             type="button"
@@ -1417,6 +1626,14 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           </button>
         </div>
       </header>
+
+      {/* Floating Sync Toast */}
+      {syncStatusToast && (
+        <div className="fixed top-14 left-1/2 -translate-x-1/2 z-50 bg-slate-900 text-white px-4 py-2 rounded-2xl shadow-xl text-xs font-bold border border-slate-700 flex items-center gap-2 animate-in fade-in slide-in-from-top-2">
+          <RefreshCw className="w-3.5 h-3.5 text-amber-400 animate-spin" />
+          <span>{syncStatusToast}</span>
+        </div>
+      )}
 
       {/* 2. MINIMAL SLIM PROGRESS BAR (24px) */}
       <div className="bg-white border-b border-slate-200/60 px-4 py-2">
@@ -2708,6 +2925,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             <p className="text-xs text-slate-500 font-mono mb-2">
               #{checkoutSuccessOrder.paperBillNumber || checkoutSuccessOrder.orderNumber} • {formatMoney(checkoutSuccessOrder.netTotal)}
             </p>
+            {checkoutSuccessOrder.orderNumber.startsWith('OFF-') && (
+              <div className="mb-3 p-2 bg-amber-50 border border-amber-200 rounded-xl text-center text-[11px] text-amber-900 font-medium">
+                ⚡ <strong>Saved Offline</strong> — Stored safely in local memory. Will automatically sync to cloud when internet is available.
+              </div>
+            )}
             {checkoutSuccessOrder.paymentMethod === 'CHEQUE' && (
               <div className="mb-3 p-2 bg-blue-50 border border-blue-200 rounded-xl text-left text-[11px] text-blue-900 font-mono flex items-center justify-between">
                 <span>Cheque: #{checkoutSuccessOrder.chequeNumber || 'N/A'}</span>
@@ -3660,6 +3882,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     </div>
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition" />
+                </button>
+
+                {/* 0c. Cloud Sync & Offline Bills */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleSyncPending();
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-amber-400 hover:bg-amber-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-600 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <RefreshCw className={`w-5 h-5 ${isSyncing ? 'animate-spin' : ''}`} />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">Cloud Sync & Offline Bills</span>
+                        <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${pendingBillsCount > 0 ? 'bg-amber-100 text-amber-800' : 'bg-emerald-100 text-emerald-700'}`}>
+                          {pendingBillsCount > 0 ? `${pendingBillsCount} Pending Sync` : 'All Synced'}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        {isOnline ? 'Connected to cloud. Tap to sync now.' : 'Offline mode. Bills saved locally until connection restores.'}
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition" />
                 </button>
 
                 {/* 1. Route Stops & Geofenced Sequence */}
