@@ -11,6 +11,7 @@ import {
   Compass,
   RotateCcw,
   ArrowLeftRight,
+  ArrowDownToLine,
   Search,
   X,
   Package,
@@ -33,7 +34,8 @@ const SearchableProductSelect: React.FC<{
   onChange: (productId: string) => void;
   availableProducts: Product[];
   warehouseProducts: Product[];
-}> = ({ value, onChange, availableProducts, warehouseProducts }) => {
+  mode?: 'LOAD' | 'UNLOAD';
+}> = ({ value, onChange, availableProducts, warehouseProducts, mode = 'LOAD' }) => {
   const [isOpen, setIsOpen] = useState(false);
   const [search, setSearch] = useState('');
   const containerRef = useRef<HTMLDivElement>(null);
@@ -49,6 +51,7 @@ const SearchableProductSelect: React.FC<{
   }, []);
 
   const selectedProduct = warehouseProducts.find(p => p.id === value);
+  const matchedInAvailable = availableProducts.find(p => p.id === value);
 
   // Available options: available in stock + the currently selected product if not in available
   const options = useMemo(() => {
@@ -79,16 +82,20 @@ const SearchableProductSelect: React.FC<{
               {selectedProduct.name}
             </span>
             <div className="flex items-center gap-2 shrink-0">
-              <span className="text-xs font-mono font-medium text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                Qty: <strong className="text-slate-900 font-bold">{selectedProduct.currentStock}</strong>
+              <span className={`text-xs font-mono font-medium px-2.5 py-1 rounded-lg ${
+                mode === 'UNLOAD' ? 'text-amber-900 bg-amber-50 border border-amber-200/70' : 'text-slate-700 bg-slate-100'
+              }`}>
+                {mode === 'UNLOAD' ? 'Lorry:' : 'Qty:'} <strong className="font-bold">{matchedInAvailable ? matchedInAvailable.currentStock : selectedProduct.currentStock}</strong>
               </span>
               <span className="text-xs font-mono font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg">
-                Free: <strong className="text-emerald-700 font-bold">{selectedProduct.freeStock || 0}</strong>
+                {mode === 'UNLOAD' ? 'Lorry Free:' : 'Free:'} <strong className="text-emerald-700 font-bold">{matchedInAvailable ? (matchedInAvailable.freeStock || 0) : (selectedProduct.freeStock || 0)}</strong>
               </span>
             </div>
           </div>
         ) : (
-          <span className="text-slate-400 font-normal">-- Choose In-Stock Item to Load --</span>
+          <span className="text-slate-400 font-normal">
+            {mode === 'UNLOAD' ? '-- Choose Item from Lorry to Unload --' : '-- Choose In-Stock Item to Load --'}
+          </span>
         )}
         <ChevronDown className={`w-4 h-4 text-slate-400 shrink-0 transition-transform ${isOpen ? 'rotate-180' : ''}`} />
       </button>
@@ -124,7 +131,7 @@ const SearchableProductSelect: React.FC<{
           <div className="overflow-y-auto divide-y divide-slate-100/90 max-h-52">
             {options.length === 0 ? (
               <div className="py-6 text-center text-xs text-slate-400">
-                No matching in-stock items found
+                {mode === 'UNLOAD' ? 'No items available on this lorry' : 'No matching in-stock items found'}
               </div>
             ) : (
               options.map((p) => {
@@ -146,11 +153,13 @@ const SearchableProductSelect: React.FC<{
                       {p.name}
                     </span>
                     <div className="flex items-center gap-2 shrink-0">
-                      <span className="text-xs font-mono font-medium text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                        Qty: <strong className="text-slate-900 font-bold">{p.currentStock}</strong>
+                      <span className={`text-xs font-mono font-medium px-2.5 py-1 rounded-lg ${
+                        mode === 'UNLOAD' ? 'text-amber-900 bg-amber-50 border border-amber-200/70' : 'text-slate-700 bg-slate-100'
+                      }`}>
+                        {mode === 'UNLOAD' ? 'Lorry:' : 'Qty:'} <strong className="font-bold">{p.currentStock}</strong>
                       </span>
                       <span className="text-xs font-mono font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg">
-                        Free: <strong className="text-emerald-700 font-bold">{p.freeStock || 0}</strong>
+                        {mode === 'UNLOAD' ? 'Free:' : 'Free:'} <strong className="text-emerald-700 font-bold">{p.freeStock || 0}</strong>
                       </span>
                     </div>
                   </button>
@@ -170,8 +179,12 @@ export const LorryLoading: React.FC = () => {
   const [selectedLorryId, setSelectedLorryId] = useState<string>('');
   const [warehouseProducts, setWarehouseProducts] = useState<Product[]>([]);
   const [activeLoading, setActiveLoading] = useState<LorryLoadingType | null>(null);
+  const [operationMode, setOperationMode] = useState<'LOAD' | 'UNLOAD'>('LOAD');
   const [loadingRows, setLoadingRows] = useState<LoadingRow[]>([
-    { productId: '', quantity: 0 }
+    { productId: '', quantity: 0, freeQuantity: 0 }
+  ]);
+  const [unloadingRows, setUnloadingRows] = useState<LoadingRow[]>([
+    { productId: '', quantity: 0, freeQuantity: 0 }
   ]);
   const [notes, setNotes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -183,7 +196,6 @@ export const LorryLoading: React.FC = () => {
   const [quickSearchQuery, setQuickSearchQuery] = useState<string>('');
   const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
   const searchContainerRef = useRef<HTMLDivElement>(null);
-
 
   // Close search popup when clicking outside
   useEffect(() => {
@@ -198,33 +210,58 @@ export const LorryLoading: React.FC = () => {
     };
   }, []);
 
+  const selectedLorry = lorries.find(l => l.id === selectedLorryId);
+
   // Filter warehouse products to ONLY those with available stock (> 0 paid or > 0 free)
   const availableWarehouseProducts = useMemo(() => {
     return warehouseProducts.filter(p => (p.currentStock > 0 || (p.freeStock || 0) > 0));
   }, [warehouseProducts]);
 
+  // Filter lorry products to ONLY those with available stock on board (> 0 paid or > 0 free)
+  const availableLorryProducts = useMemo(() => {
+    if (!selectedLorry || !Array.isArray(selectedLorry.lorryStocks)) return [];
+    return selectedLorry.lorryStocks
+      .filter(s => (s.quantity > 0) || ((s.freeQuantity || 0) > 0))
+      .map(s => ({
+        ...s.product,
+        currentStock: s.quantity,
+        freeStock: s.freeQuantity || 0
+      }));
+  }, [selectedLorry]);
+
   // Matching products for quick search bar
   const quickSearchResults = useMemo(() => {
+    const list = operationMode === 'LOAD' ? availableWarehouseProducts : availableLorryProducts;
     const q = quickSearchQuery.trim().toLowerCase();
     if (!q) {
-      return availableWarehouseProducts.slice(0, 10);
+      return list.slice(0, 10);
     }
-    return availableWarehouseProducts.filter(p =>
+    return list.filter(p =>
       p.name.toLowerCase().includes(q) ||
       p.sku.toLowerCase().includes(q) ||
       (p.category && p.category.toLowerCase().includes(q))
     );
-  }, [availableWarehouseProducts, quickSearchQuery]);
+  }, [operationMode, availableWarehouseProducts, availableLorryProducts, quickSearchQuery]);
 
   const handleAddProductFromSearch = (product: Product) => {
-    // If there is an empty row (productId is empty), fill it
-    const emptyIndex = loadingRows.findIndex(r => !r.productId);
-    if (emptyIndex !== -1) {
-      const updated = [...loadingRows];
-      updated[emptyIndex] = { ...updated[emptyIndex], productId: product.id };
-      setLoadingRows(updated);
+    if (operationMode === 'LOAD') {
+      const emptyIndex = loadingRows.findIndex(r => !r.productId);
+      if (emptyIndex !== -1) {
+        const updated = [...loadingRows];
+        updated[emptyIndex] = { ...updated[emptyIndex], productId: product.id };
+        setLoadingRows(updated);
+      } else {
+        setLoadingRows(prev => [...prev, { productId: product.id, quantity: 0, freeQuantity: 0 }]);
+      }
     } else {
-      setLoadingRows(prev => [...prev, { productId: product.id, quantity: 0, freeQuantity: 0 }]);
+      const emptyIndex = unloadingRows.findIndex(r => !r.productId);
+      if (emptyIndex !== -1) {
+        const updated = [...unloadingRows];
+        updated[emptyIndex] = { ...updated[emptyIndex], productId: product.id };
+        setUnloadingRows(updated);
+      } else {
+        setUnloadingRows(prev => [...prev, { productId: product.id, quantity: 0, freeQuantity: 0 }]);
+      }
     }
     setQuickSearchQuery('');
     setIsSearchOpen(false);
@@ -326,36 +363,82 @@ export const LorryLoading: React.FC = () => {
     setErrorMessage(null);
   };
 
-  const selectedLorry = lorries.find(l => l.id === selectedLorryId);
-
   const addRow = () => {
-    setLoadingRows([...loadingRows, { productId: '', quantity: 0, freeQuantity: 0 }]);
+    if (operationMode === 'LOAD') {
+      setLoadingRows([...loadingRows, { productId: '', quantity: 0, freeQuantity: 0 }]);
+    } else {
+      setUnloadingRows([...unloadingRows, { productId: '', quantity: 0, freeQuantity: 0 }]);
+    }
   };
 
   const updateRow = (index: number, field: keyof LoadingRow, value: any) => {
-    const updated = [...loadingRows];
-    updated[index] = { ...updated[index], [field]: value };
-    setLoadingRows(updated);
+    if (operationMode === 'LOAD') {
+      const updated = [...loadingRows];
+      updated[index] = { ...updated[index], [field]: value };
+      setLoadingRows(updated);
+    } else {
+      const updated = [...unloadingRows];
+      updated[index] = { ...updated[index], [field]: value };
+      setUnloadingRows(updated);
+    }
   };
 
   const removeRow = (index: number) => {
-    if (loadingRows.length === 1) {
-      setLoadingRows([{ productId: '', quantity: 0, freeQuantity: 0 }]);
-      return;
+    if (operationMode === 'LOAD') {
+      if (loadingRows.length === 1) {
+        setLoadingRows([{ productId: '', quantity: 0, freeQuantity: 0 }]);
+        return;
+      }
+      setLoadingRows(loadingRows.filter((_, i) => i !== index));
+    } else {
+      if (unloadingRows.length === 1) {
+        setUnloadingRows([{ productId: '', quantity: 0, freeQuantity: 0 }]);
+        return;
+      }
+      setUnloadingRows(unloadingRows.filter((_, i) => i !== index));
     }
-    setLoadingRows(loadingRows.filter((_, i) => i !== index));
   };
 
   const calculateTotalUnits = () => {
-    return loadingRows.reduce((sum, r) => sum + (parseInt(r.quantity as any, 10) || 0) + (parseInt(r.freeQuantity as any, 10) || 0), 0);
+    const rows = operationMode === 'LOAD' ? loadingRows : unloadingRows;
+    return rows.reduce((sum, r) => sum + (parseInt(r.quantity as any, 10) || 0) + (parseInt(r.freeQuantity as any, 10) || 0), 0);
   };
 
   const calculateTotalEstimatedValue = () => {
-    return loadingRows.reduce((sum, r) => {
+    const rows = operationMode === 'LOAD' ? loadingRows : unloadingRows;
+    return rows.reduce((sum, r) => {
       const p = warehouseProducts.find(item => item.id === r.productId);
       const totalUnits = (parseInt(r.quantity as any, 10) || 0) + (parseInt(r.freeQuantity as any, 10) || 0);
       return sum + (p ? p.unitPrice * totalUnits : 0);
     }, 0);
+  };
+
+  const handleUnloadAllLorryStock = () => {
+    if (!availableLorryProducts || availableLorryProducts.length === 0) {
+      alert(`Lorry ${selectedLorry?.vehicleNumber} currently has 0 floating stock to unload.`);
+      return;
+    }
+    setOperationMode('UNLOAD');
+    setUnloadingRows(
+      availableLorryProducts.map(p => ({
+        productId: p.id,
+        quantity: p.currentStock || 0,
+        freeQuantity: p.freeStock || 0
+      }))
+    );
+  };
+
+  const handleQuickUnloadItem = (productId: string) => {
+    const stock = selectedLorry?.lorryStocks?.find(s => s.productId === productId);
+    if (!stock) return;
+    setOperationMode('UNLOAD');
+    setUnloadingRows([
+      {
+        productId,
+        quantity: stock.quantity || 0,
+        freeQuantity: stock.freeQuantity || 0
+      }
+    ]);
   };
 
   const handleConfirmLoading = async (e: React.FormEvent) => {
@@ -419,6 +502,65 @@ export const LorryLoading: React.FC = () => {
     }
   };
 
+  const handleConfirmUnloading = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setErrorMessage(null);
+    setSuccessMessage(null);
+
+    const validRows = unloadingRows.filter(r => r.productId && ((r.quantity > 0) || ((r.freeQuantity || 0) > 0)));
+    if (validRows.length === 0) {
+      setErrorMessage('Please add at least one product with an unload quantity greater than zero.');
+      return;
+    }
+
+    // Verify lorry inventory
+    for (const row of validRows) {
+      const lorryStock = selectedLorry?.lorryStocks?.find(s => s.productId === row.productId);
+      const availQty = lorryStock?.quantity || 0;
+      const availFree = lorryStock?.freeQuantity || 0;
+      const prodName = lorryStock?.product?.name || 'Product';
+
+      if (row.quantity > availQty) {
+        setErrorMessage(
+          `Cannot unload ${row.quantity} regular units of "${prodName}". Only ${availQty} available on Lorry ${selectedLorry?.vehicleNumber}.`
+        );
+        return;
+      }
+      if ((row.freeQuantity || 0) > availFree) {
+        setErrorMessage(
+          `Cannot unload ${row.freeQuantity} free issue units of "${prodName}". Only ${availFree} available on Lorry ${selectedLorry?.vehicleNumber}.`
+        );
+        return;
+      }
+    }
+
+    try {
+      setSubmitting(true);
+      const res = await LorryService.unloadMorningStock(selectedLorryId, {
+        items: validRows.map(r => ({
+          productId: r.productId,
+          quantity: r.quantity || 0,
+          freeQuantity: r.freeQuantity || 0
+        })),
+        notes: notes.trim() || undefined
+      });
+
+      setSuccessMessage(
+        `✓ ${res.message || `Successfully unloaded ${res.totalUnloadedItems} units from Lorry ${selectedLorry?.vehicleNumber} back to Central Warehouse!`}`
+      );
+      setUnloadingRows([{ productId: '', quantity: 0, freeQuantity: 0 }]);
+      setNotes('');
+
+      // Refresh data
+      await loadData();
+      await fetchActiveLoading(selectedLorryId);
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.error || err.message || 'Error executing lorry unloading.');
+    } finally {
+      setSubmitting(false);
+    }
+  };
+
   return (
     <div className="p-4 sm:p-6 lg:p-8 space-y-5 sm:space-y-6">
       {/* Header */}
@@ -437,6 +579,20 @@ export const LorryLoading: React.FC = () => {
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
+          <button
+            type="button"
+            onClick={() => setOperationMode(prev => prev === 'LOAD' ? 'UNLOAD' : 'LOAD')}
+            className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-2xl shadow-2xs transition-all active:scale-95 cursor-pointer border ${
+              operationMode === 'UNLOAD'
+                ? 'text-amber-800 bg-amber-100/90 border-amber-300 ring-2 ring-amber-400/40'
+                : 'text-amber-700 bg-amber-50 hover:bg-amber-100/80 border-amber-200/90'
+            }`}
+            title="Switch between Morning Loading and Lorry Unloading"
+          >
+            <ArrowDownToLine className="w-4 h-4 text-amber-600" />
+            <span>{operationMode === 'UNLOAD' ? 'Mode: Unloading (Active)' : 'Unload from Lorry'}</span>
+          </button>
+
           <button
             type="button"
             onClick={() => setShowExchangeModal(true)}
@@ -536,34 +692,105 @@ export const LorryLoading: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Loading Sheet Entry Form (2 Cols) */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 space-y-5">
+          {/* Segmented Mode Selector: Load vs Unload */}
           <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
-            <div>
-              <h2 className="text-base font-bold text-slate-900">
-                Morning Stock Issue to {selectedLorry?.vehicleNumber}
-              </h2>
-              <p className="text-xs text-slate-400 mt-0.5">
-                Route: {selectedLorry?.route?.name} • Driver: {selectedLorry?.driverName}
-              </p>
+            <div className="inline-flex p-1 bg-slate-100/90 rounded-2xl border border-slate-200/80 shadow-2xs">
+              <button
+                type="button"
+                onClick={() => setOperationMode('LOAD')}
+                className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  operationMode === 'LOAD'
+                    ? 'bg-white text-blue-700 shadow-sm ring-1 ring-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <Boxes className="w-3.5 h-3.5 text-blue-600" />
+                <span>Morning Load (Warehouse → Lorry)</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setOperationMode('UNLOAD')}
+                className={`flex items-center gap-2 px-3.5 py-2 text-xs font-bold rounded-xl transition-all cursor-pointer ${
+                  operationMode === 'UNLOAD'
+                    ? 'bg-white text-amber-800 shadow-sm ring-1 ring-slate-200/80'
+                    : 'text-slate-600 hover:text-slate-900'
+                }`}
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5 text-amber-600" />
+                <span>Unload to Warehouse (Lorry → Warehouse)</span>
+              </button>
             </div>
+
             <div className="flex items-center gap-2">
-              <span className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-xl">
-                {availableWarehouseProducts.length} In-Stock Items
+              <span className={`px-2.5 py-1 text-xs font-semibold rounded-xl border ${
+                operationMode === 'LOAD'
+                  ? 'bg-emerald-50 text-emerald-700 border-emerald-200/60'
+                  : 'bg-amber-50 text-amber-800 border-amber-200/60'
+              }`}>
+                {operationMode === 'LOAD'
+                  ? `${availableWarehouseProducts.length} In-Stock Items`
+                  : `${availableLorryProducts.length} Lorry Stock Items`}
               </span>
               <button
                 type="button"
                 onClick={addRow}
-                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+                className={`flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold rounded-xl transition-colors cursor-pointer ${
+                  operationMode === 'LOAD'
+                    ? 'text-blue-600 bg-blue-50 hover:bg-blue-100'
+                    : 'text-amber-800 bg-amber-50 hover:bg-amber-100'
+                }`}
               >
                 <Plus className="w-3.5 h-3.5" /> Add Product Line
               </button>
             </div>
           </div>
 
+          {/* Dynamic Mode Title Banner */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2 pt-0.5">
+            <div>
+              <h2 className="text-base font-bold text-slate-900 flex items-center gap-2">
+                {operationMode === 'LOAD' ? (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-blue-600 inline-block"></span>
+                    <span>Morning Stock Issue to {selectedLorry?.vehicleNumber}</span>
+                  </>
+                ) : (
+                  <>
+                    <span className="w-2 h-2 rounded-full bg-amber-500 inline-block"></span>
+                    <span>Unload Stock from {selectedLorry?.vehicleNumber} to Central Warehouse</span>
+                  </>
+                )}
+              </h2>
+              <p className="text-xs text-slate-400 mt-0.5">
+                {operationMode === 'LOAD'
+                  ? `Route: ${selectedLorry?.route?.name || 'Unassigned'} • Driver: ${selectedLorry?.driverName || 'N/A'}`
+                  : `Return unsold, surplus, or return items from lorry back into central warehouse inventory.`}
+              </p>
+            </div>
+
+            {operationMode === 'UNLOAD' && availableLorryProducts.length > 0 && (
+              <button
+                type="button"
+                onClick={handleUnloadAllLorryStock}
+                className="text-xs font-bold text-amber-800 bg-amber-50 hover:bg-amber-100/90 border border-amber-200/90 px-3 py-1.5 rounded-xl transition-all cursor-pointer flex items-center gap-1.5 self-start sm:self-center shrink-0 active:scale-95"
+              >
+                <ArrowDownToLine className="w-3.5 h-3.5 text-amber-700" />
+                <span>Fill All {availableLorryProducts.length} Items on Lorry</span>
+              </button>
+            )}
+          </div>
+
           {/* Quick Search & 1-Click Add Bar */}
           <div ref={searchContainerRef} className="relative z-20">
-            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-2xl shadow-2xs">
+            <div className={`flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 rounded-2xl shadow-2xs border ${
+              operationMode === 'LOAD'
+                ? 'bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-slate-50 border-blue-200/80'
+                : 'bg-gradient-to-r from-amber-50/80 via-orange-50/40 to-slate-50 border-amber-200/80'
+            }`}>
               <div className="relative flex-1">
-                <Search className="w-4 h-4 text-blue-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <Search className={`w-4 h-4 absolute left-3.5 top-1/2 -translate-y-1/2 ${
+                  operationMode === 'LOAD' ? 'text-blue-500' : 'text-amber-600'
+                }`} />
                 <input
                   type="text"
                   value={quickSearchQuery}
@@ -572,8 +799,14 @@ export const LorryLoading: React.FC = () => {
                     setIsSearchOpen(true);
                   }}
                   onFocus={() => setIsSearchOpen(true)}
-                  placeholder={`Search warehouse stock by name, SKU, or category to quickly add... (${availableWarehouseProducts.length} available)`}
-                  className="w-full pl-10 pr-9 py-2 bg-white border border-blue-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                  placeholder={
+                    operationMode === 'LOAD'
+                      ? `Search warehouse stock by name or SKU to quickly add... (${availableWarehouseProducts.length} available)`
+                      : `Search lorry stock by name or SKU to quickly unload... (${availableLorryProducts.length} items on lorry)`
+                  }
+                  className={`w-full pl-10 pr-9 py-2 bg-white rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 shadow-2xs border ${
+                    operationMode === 'LOAD' ? 'border-blue-200/90 focus:ring-blue-500' : 'border-amber-200/90 focus:ring-amber-500'
+                  }`}
                 />
                 {quickSearchQuery && (
                   <button
@@ -588,10 +821,20 @@ export const LorryLoading: React.FC = () => {
               <button
                 type="button"
                 onClick={() => setIsSearchOpen(prev => !prev)}
-                className="px-3 py-2 text-xs font-semibold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200/80 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+                className={`px-3 py-2 text-xs font-semibold bg-white rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer border ${
+                  operationMode === 'LOAD'
+                    ? 'text-blue-700 hover:bg-blue-50 border-blue-200/80'
+                    : 'text-amber-800 hover:bg-amber-50 border-amber-200/80'
+                }`}
               >
-                <Search className="w-3.5 h-3.5 text-blue-600" />
-                <span>{isSearchOpen ? 'Hide Search List' : 'Browse In-Stock Items'}</span>
+                <Search className={`w-3.5 h-3.5 ${operationMode === 'LOAD' ? 'text-blue-600' : 'text-amber-700'}`} />
+                <span>
+                  {isSearchOpen
+                    ? 'Hide Search List'
+                    : operationMode === 'LOAD'
+                      ? 'Browse In-Stock Items'
+                      : 'Browse Lorry Items'}
+                </span>
               </button>
             </div>
 
@@ -601,20 +844,27 @@ export const LorryLoading: React.FC = () => {
                 <div className="overflow-y-auto divide-y divide-slate-100/90 max-h-72">
                   {quickSearchResults.length === 0 ? (
                     <div className="py-6 text-center text-xs text-slate-400">
-                      No in-stock warehouse products match "{quickSearchQuery}".
+                      {operationMode === 'LOAD'
+                        ? `No in-stock warehouse products match "${quickSearchQuery}".`
+                        : `No items on lorry match "${quickSearchQuery}".`}
                     </div>
                   ) : (
                     quickSearchResults.map((prod) => {
-                      const isAlreadyAdded = loadingRows.some(r => r.productId === prod.id);
+                      const activeRows = operationMode === 'LOAD' ? loadingRows : unloadingRows;
+                      const isAlreadyAdded = activeRows.some(r => r.productId === prod.id);
                       return (
                         <button
                           key={prod.id}
                           type="button"
                           onClick={() => handleAddProductFromSearch(prod)}
-                          className="w-full text-left py-2.5 px-4 hover:bg-blue-50/70 transition-colors flex items-center justify-between gap-3 group cursor-pointer bg-white"
+                          className={`w-full text-left py-2.5 px-4 transition-colors flex items-center justify-between gap-3 group cursor-pointer bg-white ${
+                            operationMode === 'LOAD' ? 'hover:bg-blue-50/70' : 'hover:bg-amber-50/70'
+                          }`}
                         >
                           <div className="flex items-center gap-2 min-w-0">
-                            <span className="text-sm font-semibold text-slate-800 group-hover:text-blue-700 truncate">
+                            <span className={`text-sm font-semibold truncate ${
+                              operationMode === 'LOAD' ? 'text-slate-800 group-hover:text-blue-700' : 'text-slate-800 group-hover:text-amber-800'
+                            }`}>
                               {prod.name}
                             </span>
                             {isAlreadyAdded && (
@@ -625,11 +875,13 @@ export const LorryLoading: React.FC = () => {
                           </div>
 
                           <div className="flex items-center gap-2 shrink-0">
-                            <span className="text-xs font-mono font-medium text-slate-700 bg-slate-100 px-2.5 py-1 rounded-lg">
-                              Qty: <strong className="text-slate-900 font-bold">{prod.currentStock}</strong>
+                            <span className={`text-xs font-mono font-medium px-2.5 py-1 rounded-lg ${
+                              operationMode === 'UNLOAD' ? 'text-amber-900 bg-amber-50 border border-amber-200/70' : 'text-slate-700 bg-slate-100'
+                            }`}>
+                              {operationMode === 'UNLOAD' ? 'Lorry Paid:' : 'Qty:'} <strong className="font-bold">{prod.currentStock}</strong>
                             </span>
                             <span className="text-xs font-mono font-medium text-emerald-800 bg-emerald-50 border border-emerald-200/80 px-2.5 py-1 rounded-lg">
-                              Free: <strong className="text-emerald-700 font-bold">{prod.freeStock || 0}</strong>
+                              {operationMode === 'UNLOAD' ? 'Lorry Free:' : 'Free:'} <strong className="text-emerald-700 font-bold">{prod.freeStock || 0}</strong>
                             </span>
                           </div>
                         </button>
@@ -641,10 +893,17 @@ export const LorryLoading: React.FC = () => {
             )}
           </div>
 
-          <form onSubmit={handleConfirmLoading} className="space-y-4">
+          <form onSubmit={operationMode === 'LOAD' ? handleConfirmLoading : handleConfirmUnloading} className="space-y-4">
             <div className="space-y-3">
-              {loadingRows.map((row, index) => {
+              {(operationMode === 'LOAD' ? loadingRows : unloadingRows).map((row, index) => {
                 const selectedProd = warehouseProducts.find(p => p.id === row.productId);
+                const lorryStock = selectedLorry?.lorryStocks?.find(s => s.productId === row.productId);
+                const maxPaid = operationMode === 'LOAD'
+                  ? (selectedProd?.currentStock || 0)
+                  : (lorryStock?.quantity || 0);
+                const maxFree = operationMode === 'LOAD'
+                  ? (selectedProd?.freeStock || 0)
+                  : (lorryStock?.freeQuantity || 0);
 
                 return (
                   <div
@@ -654,45 +913,48 @@ export const LorryLoading: React.FC = () => {
                     {/* Ultra Neat and Clean In-Stock Product Dropdown */}
                     <div className="flex-1 w-full">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Product (In-Stock Only)
+                        {operationMode === 'LOAD' ? 'Product (In-Stock Only)' : 'Product (On Lorry Only)'}
                       </label>
                       <SearchableProductSelect
                         value={row.productId}
                         onChange={(id) => updateRow(index, 'productId', id)}
-                        availableProducts={availableWarehouseProducts}
+                        availableProducts={operationMode === 'LOAD' ? availableWarehouseProducts : availableLorryProducts}
                         warehouseProducts={warehouseProducts}
+                        mode={operationMode}
                       />
                     </div>
 
-                    {/* Quantity to Load (Paid) */}
+                    {/* Quantity to Load / Unload (Paid) */}
                     <div className="w-full sm:w-28">
                       <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Paid Qty
+                        {operationMode === 'LOAD' ? 'Paid Qty' : 'Unload Paid'}
                       </label>
                       <input
                         type="number"
                         min="0"
-                        max={selectedProd ? selectedProd.currentStock : 9999}
+                        max={maxPaid || 9999}
                         value={row.quantity !== undefined ? row.quantity : ''}
                         onChange={(e) => updateRow(index, 'quantity', parseInt(e.target.value, 10) || 0)}
                         placeholder="0"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center"
+                        className={`w-full bg-white border rounded-xl px-3 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 text-center ${
+                          operationMode === 'LOAD' ? 'border-slate-200 focus:ring-blue-500' : 'border-amber-200 focus:ring-amber-500'
+                        }`}
                       />
                     </div>
 
-                    {/* Free Issue to Load */}
+                    {/* Free Issue to Load / Unload */}
                     <div className="w-full sm:w-28">
                       <label className="text-xs font-bold text-emerald-700 uppercase tracking-wider block mb-1.5">
-                        +Free Qty
+                        {operationMode === 'LOAD' ? '+Free Qty' : 'Unload Free'}
                       </label>
                       <input
                         type="number"
                         min="0"
-                        max={selectedProd ? (selectedProd.freeStock || 0) : 9999}
+                        max={maxFree || 9999}
                         value={row.freeQuantity !== undefined && row.freeQuantity !== 0 ? row.freeQuantity : ''}
                         onChange={(e) => updateRow(index, 'freeQuantity', parseInt(e.target.value, 10) || 0)}
                         placeholder="0"
-                        title="Free issue stock to load (Cost: Rs. 0.00)"
+                        title={operationMode === 'LOAD' ? 'Free issue stock to load (Cost: Rs. 0.00)' : 'Free issue stock to unload back to warehouse'}
                         className="w-full bg-emerald-50/60 border border-emerald-300 rounded-xl px-3 py-2.5 text-sm font-bold font-mono text-emerald-900 focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center"
                       />
                     </div>
@@ -703,24 +965,24 @@ export const LorryLoading: React.FC = () => {
                         <div className="flex flex-col text-right">
                           <span
                             className={`text-xs font-semibold px-2 py-0.5 rounded-md ${
-                              selectedProd.currentStock >= row.quantity
-                                ? 'bg-slate-200 text-slate-700'
-                                : 'bg-rose-100 text-rose-700'
+                              operationMode === 'LOAD'
+                                ? (selectedProd.currentStock >= row.quantity ? 'bg-slate-200 text-slate-700' : 'bg-rose-100 text-rose-700')
+                                : ((lorryStock?.quantity || 0) >= row.quantity ? 'bg-amber-100 text-amber-800' : 'bg-rose-100 text-rose-700')
                             }`}
                           >
-                            Paid: {selectedProd.currentStock}
+                            {operationMode === 'LOAD' ? `Paid: ${selectedProd.currentStock}` : `Lorry: ${lorryStock?.quantity || 0}`}
                           </span>
                           <span
                             className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-emerald-100 text-emerald-800 font-mono mt-0.5"
                           >
-                            Free: {selectedProd.freeStock || 0}
+                            {operationMode === 'LOAD' ? `Free: ${selectedProd.freeStock || 0}` : `Free: ${lorryStock?.freeQuantity || 0}`}
                           </span>
                         </div>
                       )}
                       <button
                         type="button"
                         onClick={() => removeRow(index)}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white transition-colors"
+                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white transition-colors cursor-pointer"
                       >
                         ✕
                       </button>
@@ -733,13 +995,17 @@ export const LorryLoading: React.FC = () => {
             {/* Notes */}
             <div>
               <label className="text-xs font-bold text-slate-600 block mb-1.5">
-                Dispatch Notes / Loading Gate Pass Remarks
+                {operationMode === 'LOAD' ? 'Dispatch Notes / Loading Gate Pass Remarks' : 'Unloading Remarks / Return Reason'}
               </label>
               <input
                 type="text"
                 value={notes}
                 onChange={(e) => setNotes(e.target.value)}
-                placeholder="e.g. Standard morning load for Route 1 Colombo South"
+                placeholder={
+                  operationMode === 'LOAD'
+                    ? 'e.g. Standard morning load for Route 1 Colombo South'
+                    : 'e.g. Returned unsold stock / route completed / vehicle service'
+                }
                 className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
               />
             </div>
@@ -749,9 +1015,11 @@ export const LorryLoading: React.FC = () => {
               <div className="flex items-center gap-6">
                 <div>
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Total Units to Load
+                    {operationMode === 'LOAD' ? 'Total Units to Load' : 'Total Units to Unload'}
                   </span>
-                  <span className="text-xl font-bold text-slate-900 font-mono">
+                  <span className={`text-xl font-bold font-mono ${
+                    operationMode === 'LOAD' ? 'text-slate-900' : 'text-amber-900'
+                  }`}>
                     {calculateTotalUnits()} Units
                   </span>
                 </div>
@@ -759,18 +1027,20 @@ export const LorryLoading: React.FC = () => {
                   <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
                     Estimated Stock Value
                   </span>
-                  <span className="text-xl font-bold text-blue-600 font-mono">
+                  <span className={`text-xl font-bold font-mono ${
+                    operationMode === 'LOAD' ? 'text-blue-600' : 'text-amber-700'
+                  }`}>
                     {formatMoney(calculateTotalEstimatedValue())}
                   </span>
                 </div>
               </div>
 
               <div className="flex items-center gap-2 w-full sm:w-auto">
-                {hasDraft && (
+                {operationMode === 'LOAD' && hasDraft && (
                   <button
                     type="button"
                     onClick={handleClearLoadingForm}
-                    className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors flex items-center gap-1.5"
+                    className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors flex items-center gap-1.5 cursor-pointer"
                     title="Clear current loading draft"
                   >
                     <RotateCcw className="w-3.5 h-3.5" />
@@ -778,14 +1048,25 @@ export const LorryLoading: React.FC = () => {
                   </button>
                 )}
 
-                <button
-                  type="submit"
-                  disabled={submitting}
-                  className="flex-1 sm:flex-initial px-6 py-3 bg-[#0071E3] hover:bg-blue-600 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50"
-                >
-                  <PackageCheck className="w-4 h-4" />
-                  <span>{submitting ? 'Transferring Stock...' : 'Confirm & Load Lorry'}</span>
-                </button>
+                {operationMode === 'LOAD' ? (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 sm:flex-initial px-6 py-3 bg-[#0071E3] hover:bg-blue-600 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    <PackageCheck className="w-4 h-4" />
+                    <span>{submitting ? 'Transferring Stock...' : 'Confirm & Load Lorry'}</span>
+                  </button>
+                ) : (
+                  <button
+                    type="submit"
+                    disabled={submitting}
+                    className="flex-1 sm:flex-initial px-6 py-3 bg-amber-600 hover:bg-amber-700 active:scale-[0.99] text-white text-xs font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 cursor-pointer"
+                  >
+                    <ArrowDownToLine className="w-4 h-4" />
+                    <span>{submitting ? 'Unloading Stock...' : 'Confirm & Unload to Warehouse'}</span>
+                  </button>
+                )}
               </div>
             </div>
           </form>
@@ -937,26 +1218,58 @@ export const LorryLoading: React.FC = () => {
 
           {/* Current Floating Inventory on Lorry */}
           <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-5 space-y-3">
-            <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
-              <Truck className="w-4 h-4 text-emerald-600" />
-              Floating Inventory Inside Lorry
-            </h3>
-            <div className="space-y-1.5 max-h-60 overflow-y-auto pr-1">
+            <div className="flex items-center justify-between border-b border-slate-100 pb-2.5">
+              <h3 className="text-xs font-bold text-slate-900 uppercase tracking-wider flex items-center gap-2">
+                <Truck className="w-4 h-4 text-emerald-600" />
+                Floating Inventory Inside Lorry
+              </h3>
+              {availableLorryProducts.length > 0 && (
+                <button
+                  type="button"
+                  onClick={handleUnloadAllLorryStock}
+                  className="text-[11px] font-bold text-amber-800 hover:text-amber-900 bg-amber-50 hover:bg-amber-100/90 px-2.5 py-1 rounded-xl border border-amber-200/80 flex items-center gap-1 transition-all cursor-pointer active:scale-95 shadow-2xs"
+                  title="Unload all floating items from this lorry back to warehouse"
+                >
+                  <ArrowDownToLine className="w-3 h-3 text-amber-600" />
+                  <span>Unload All</span>
+                </button>
+              )}
+            </div>
+
+            <div className="space-y-1.5 max-h-64 overflow-y-auto pr-1">
               {selectedLorry?.lorryStocks && selectedLorry.lorryStocks.length > 0 ? (
                 selectedLorry.lorryStocks
-                  .filter(s => s.quantity > 0)
+                  .filter(s => s.quantity > 0 || (s.freeQuantity || 0) > 0)
                   .map((stock) => (
                     <div
                       key={stock.id}
-                      className="flex items-center justify-between py-2 px-3 bg-slate-50 rounded-xl text-xs"
+                      className="flex items-center justify-between py-2 px-3 bg-slate-50 hover:bg-slate-100/80 rounded-xl text-xs transition-colors"
                     >
-                      <div>
-                        <span className="font-medium text-slate-800 block">{stock.product.name}</span>
-                        <span className="font-mono text-[10px] text-slate-400">{stock.product.sku}</span>
+                      <div className="min-w-0 pr-2">
+                        <span className="font-semibold text-slate-800 block truncate">{stock.product.name}</span>
+                        <div className="flex items-center gap-2 text-[10px] text-slate-500 mt-0.5">
+                          <span className="font-mono">{stock.product.sku}</span>
+                          {(stock.freeQuantity || 0) > 0 && (
+                            <span className="font-mono font-medium text-emerald-700 bg-emerald-50 px-1 rounded border border-emerald-200/60">
+                              +{stock.freeQuantity} Free
+                            </span>
+                          )}
+                        </div>
                       </div>
-                      <span className="font-mono font-bold text-slate-900 px-2 py-0.5 bg-white border border-slate-200 rounded-lg">
-                        {stock.quantity} {stock.product.unit}
-                      </span>
+                      <div className="flex items-center gap-2 shrink-0">
+                        <span className="font-mono font-bold text-slate-900 px-2 py-0.5 bg-white border border-slate-200 rounded-lg">
+                          {stock.quantity} {stock.product.unit}
+                        </span>
+                        <button
+                          type="button"
+                          onClick={() => handleQuickUnloadItem(stock.productId)}
+                          className="px-2 py-1 text-[11px] font-bold text-amber-800 bg-amber-50 hover:bg-amber-100 border border-amber-200/80 rounded-lg transition-all active:scale-95 cursor-pointer flex items-center gap-1"
+                          title="Unload this product into warehouse"
+                        >
+                          <ArrowDownToLine className="w-3 h-3 text-amber-600" />
+                          <span>Unload</span>
+                        </button>
+                      </div>
                     </div>
                   ))
               ) : (

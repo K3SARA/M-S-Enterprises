@@ -3912,6 +3912,162 @@ app.post('/api/lorries/:id/load', async (req: Request, res: Response) => {
   }
 });
 
+// ========================================================
+// UNLOAD STOCK FROM LORRY BACK TO CENTRAL WAREHOUSE
+// (e.g. during morning loading when returning leftover or wrong stock)
+// ========================================================
+app.post('/api/lorries/:id/unload', async (req: Request, res: Response) => {
+  const { id: lorryId } = req.params;
+  const { items, notes } = req.body;
+  // items: [{ productId: string, quantity: number, freeQuantity?: number }]
+
+  if (!Array.isArray(items) || items.length === 0) {
+    return res.status(400).json({ error: 'At least one item is required for lorry unloading.' });
+  }
+
+  try {
+    const result = await prisma.$transaction(async (tx) => {
+      const lorry = await tx.lorry.findUniqueOrThrow({
+        where: { id: lorryId },
+        include: { route: true }
+      });
+
+      // Verify lorry stock availability for all requested items
+      for (const item of items) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+        if (qty <= 0 && freeQty <= 0) continue;
+
+        const lorryStock = await tx.lorryStock.findUnique({
+          where: {
+            lorryId_productId: {
+              lorryId,
+              productId: item.productId
+            }
+          },
+          include: { product: true }
+        });
+
+        const product = lorryStock?.product || await tx.product.findUniqueOrThrow({ where: { id: item.productId } });
+        const availRegular = lorryStock?.quantity || 0;
+        const availFree = lorryStock?.freeQuantity || 0;
+
+        if (qty > 0 && availRegular < qty) {
+          throw new Error(`Cannot unload ${qty} units of "${product.name}". Only ${availRegular} regular units available in Lorry ${lorry.vehicleNumber}.`);
+        }
+        if (freeQty > 0 && availFree < freeQty) {
+          throw new Error(`Cannot unload ${freeQty} free units of "${product.name}". Only ${availFree} free units available in Lorry ${lorry.vehicleNumber}.`);
+        }
+      }
+
+      // Check for active loading sheet for this lorry today
+      const activeLoading = await tx.lorryLoading.findFirst({
+        where: {
+          lorryId,
+          status: { in: ['LOADED', 'IN_TRANSIT'] }
+        },
+        orderBy: { date: 'desc' },
+        include: { items: true }
+      });
+
+      let totalUnloadedUnits = 0;
+
+      for (const item of items) {
+        const qty = parseInt(item.quantity, 10) || 0;
+        const freeQty = parseInt(item.freeQuantity, 10) || 0;
+        if (qty <= 0 && freeQty <= 0) continue;
+
+        totalUnloadedUnits += (qty + freeQty);
+
+        // 1. Decrement Lorry Stock
+        await tx.lorryStock.update({
+          where: {
+            lorryId_productId: {
+              lorryId,
+              productId: item.productId
+            }
+          },
+          data: {
+            quantity: qty > 0 ? { decrement: qty } : undefined,
+            freeQuantity: freeQty > 0 ? { decrement: freeQty } : undefined
+          }
+        });
+
+        // 2. Increment Central Warehouse Stock
+        await tx.product.update({
+          where: { id: item.productId },
+          data: {
+            currentStock: qty > 0 ? { increment: qty } : undefined,
+            freeStock: freeQty > 0 ? { increment: freeQty } : undefined
+          }
+        });
+
+        // 3. Record Warehouse Inward StockMovement
+        const referenceId = activeLoading?.loadingNumber || `UNLOAD-${Date.now().toString().slice(-6)}`;
+        if (qty > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_UNLOAD',
+              quantity: qty,
+              isFreeIssue: false,
+              referenceId,
+              notes: notes?.trim() || `Unloaded from Lorry ${lorry.vehicleNumber} (${lorry.driverName}) back to Central Warehouse`
+            }
+          });
+        }
+
+        if (freeQty > 0) {
+          await tx.stockMovement.create({
+            data: {
+              productId: item.productId,
+              type: 'LORRY_UNLOAD',
+              quantity: freeQty,
+              isFreeIssue: true,
+              referenceId,
+              notes: notes?.trim() || `Free issue stock unloaded from Lorry ${lorry.vehicleNumber} back to Central Warehouse`
+            }
+          });
+        }
+
+        // 4. If active loading exists, adjust lorryLoadingItem loaded counts
+        if (activeLoading) {
+          const loadingItem = activeLoading.items.find(li => li.productId === item.productId);
+          if (loadingItem) {
+            await tx.lorryLoadingItem.update({
+              where: { id: loadingItem.id },
+              data: {
+                loadedQty: Math.max(0, loadingItem.loadedQty - qty),
+                loadedFreeQty: Math.max(0, (loadingItem.loadedFreeQty || 0) - freeQty)
+              }
+            });
+          }
+        }
+      }
+
+      // If active loading exists, adjust totalLoadedItems
+      if (activeLoading) {
+        await tx.lorryLoading.update({
+          where: { id: activeLoading.id },
+          data: {
+            totalLoadedItems: Math.max(0, activeLoading.totalLoadedItems - totalUnloadedUnits)
+          }
+        });
+      }
+
+      return {
+        success: true,
+        totalUnloadedItems: totalUnloadedUnits,
+        message: `Successfully unloaded ${totalUnloadedUnits} units from Lorry ${lorry.vehicleNumber} back to Central Warehouse.`
+      };
+    });
+
+    res.json(result);
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
 // Get current active loading sheet for a lorry
 app.get('/api/lorries/:id/current-loading', async (req: Request, res: Response) => {
   try {

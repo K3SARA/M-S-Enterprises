@@ -154,6 +154,8 @@ export const LorryService = {
     api.put<Lorry>(`/lorries/${id}`, data).then(r => r.data),
   loadMorningStock: (id: string, payload: { items: { productId: string; quantity: number; freeQuantity?: number }[]; notes?: string }) =>
     api.post<LorryLoading>(`/lorries/${id}/load`, payload).then(r => r.data),
+  unloadMorningStock: (id: string, payload: { items: { productId: string; quantity: number; freeQuantity?: number }[]; notes?: string }) =>
+    api.post<{ success: boolean; totalUnloadedItems: number; message: string }>(`/lorries/${id}/unload`, payload).then(r => r.data),
   getCurrentLoading: (id: string) =>
     api.get<LorryLoading | null>(`/lorries/${id}/current-loading`).then(r => r.data),
   enterDriverBill: (id: string, payload: {
