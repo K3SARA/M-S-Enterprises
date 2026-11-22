@@ -48,7 +48,8 @@ import {
   Lock,
   Wifi,
   WifiOff,
-  BarChart3
+  BarChart3,
+  Gift
 } from 'lucide-react';
 import {
   Customer,
@@ -87,6 +88,7 @@ interface CartItem {
   availableStock: number;
   quantity: number;
   freeQuantity: number;
+  manualFree?: boolean;
   discountPercent: number;
 }
 
@@ -1044,10 +1046,14 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       const existing = prev.find(i => i.productId === product.id);
       if (existing) {
         const nextQty = existing.quantity + qty;
-        if (nextQty <= 0) {
+        if (nextQty <= 0 && (existing.freeQuantity || 0) <= 0) {
           return prev.filter(i => i.productId !== product.id);
         }
-        return prev.map(i => i.productId === product.id ? { ...i, quantity: nextQty, freeQuantity: calcFree(nextQty) } : i);
+        return prev.map(i => i.productId === product.id ? {
+          ...i,
+          quantity: Math.max(0, nextQty),
+          freeQuantity: existing.manualFree ? existing.freeQuantity : calcFree(Math.max(0, nextQty))
+        } : i);
       }
       const initialQty = Math.max(1, qty);
       return [
@@ -1063,6 +1069,45 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           availableStock: lorryStock,
           quantity: initialQty,
           freeQuantity: calcFree(initialQty),
+          manualFree: false,
+          discountPercent: 0
+        }
+      ];
+    });
+  };
+
+  const addFreeToCart = (product: Product, freeQty: number = 1) => {
+    if (!selectedCustomerId) {
+      alert('Please select a customer first before adding items to cart.');
+      return;
+    }
+    const stockInfo = lorryStockMap.get(product.id);
+    const lorryStock = stockInfo ? stockInfo.stock : product.currentStock;
+
+    setCart(prev => {
+      const existing = prev.find(i => i.productId === product.id);
+      if (existing) {
+        const nextFree = (existing.freeQuantity || 0) + freeQty;
+        return prev.map(i => i.productId === product.id ? {
+          ...i,
+          freeQuantity: Math.max(0, nextFree),
+          manualFree: true
+        } : i);
+      }
+      return [
+        ...prev,
+        {
+          productId: product.id,
+          sku: product.sku,
+          name: product.name,
+          category: product.category,
+          unit: product.unit,
+          unitPrice: product.unitPrice,
+          originalUnitPrice: product.unitPrice,
+          availableStock: lorryStock,
+          quantity: 0,
+          freeQuantity: Math.max(1, freeQty),
+          manualFree: true,
           discountPercent: 0
         }
       ];
@@ -1080,7 +1125,15 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         .map(i => {
           if (i.productId === productId) {
             const next = i.quantity + delta;
-            return next > 0 ? { ...i, quantity: next, freeQuantity: calcFree(next) } : null;
+            const freeQty = i.manualFree ? i.freeQuantity : calcFree(Math.max(0, next));
+            if (next <= 0 && freeQty <= 0) {
+              return null;
+            }
+            return {
+              ...i,
+              quantity: Math.max(0, next),
+              freeQuantity: freeQty
+            };
           }
           return i;
         })
@@ -1095,13 +1148,81 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     const calcFree = (q: number) => (buyRatio > 0 && getRatio > 0 && q > 0 ? Math.floor(q / buyRatio) * getRatio : 0);
 
     setCart(prev =>
+      prev
+        .map(i => {
+          if (i.productId === productId) {
+            const safeQty = Math.max(0, qty);
+            const freeQty = i.manualFree ? i.freeQuantity : calcFree(safeQty);
+            if (safeQty <= 0 && freeQty <= 0) {
+              return null;
+            }
+            return {
+              ...i,
+              quantity: safeQty,
+              freeQuantity: freeQty
+            };
+          }
+          return i;
+        })
+        .filter(Boolean) as CartItem[]
+    );
+  };
+
+  const updateCartFreeQty = (productId: string, delta: number) => {
+    setCart(prev =>
+      prev
+        .map(i => {
+          if (i.productId === productId) {
+            const nextFree = Math.max(0, (i.freeQuantity || 0) + delta);
+            if (nextFree <= 0 && i.quantity <= 0) {
+              return null;
+            }
+            return {
+              ...i,
+              freeQuantity: nextFree,
+              manualFree: true
+            };
+          }
+          return i;
+        })
+        .filter(Boolean) as CartItem[]
+    );
+  };
+
+  const setCartItemFreeQty = (productId: string, freeQty: number) => {
+    setCart(prev =>
+      prev
+        .map(i => {
+          if (i.productId === productId) {
+            const safeFree = Math.max(0, freeQty);
+            if (safeFree <= 0 && i.quantity <= 0) {
+              return null;
+            }
+            return {
+              ...i,
+              freeQuantity: safeFree,
+              manualFree: true
+            };
+          }
+          return i;
+        })
+        .filter(Boolean) as CartItem[]
+    );
+  };
+
+  const resetCartItemFreeQty = (productId: string) => {
+    const product = products.find(p => p.id === productId);
+    const buyRatio = product?.freeRatioBuy || 0;
+    const getRatio = product?.freeRatioGet || 0;
+    const calcFree = (q: number) => (buyRatio > 0 && getRatio > 0 && q > 0 ? Math.floor(q / buyRatio) * getRatio : 0);
+
+    setCart(prev =>
       prev.map(i => {
         if (i.productId === productId) {
-          const safeQty = Math.max(0, qty);
           return {
             ...i,
-            quantity: safeQty,
-            freeQuantity: calcFree(safeQty)
+            freeQuantity: calcFree(i.quantity),
+            manualFree: false
           };
         }
         return i;
@@ -1119,6 +1240,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   const totalItemsCount = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
+  }, [cart]);
+
+  const totalFreeItemsCount = useMemo(() => {
+    return cart.reduce((sum, item) => sum + (item.freeQuantity || 0), 0);
   }, [cart]);
 
   const availableReturnCredit = selectedCustomer?.returnCreditBalance || 0;
@@ -2505,69 +2630,138 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
                 {cart.map(item => {
                   const lineTotal = item.unitPrice * item.quantity;
+                  const isPureFree = item.quantity === 0 && (item.freeQuantity || 0) > 0;
                   return (
                     <div
                       key={item.productId}
-                      className="p-3 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2 shadow-2xs"
+                      className="p-3 bg-white border border-slate-200 rounded-2xl shadow-2xs space-y-2.5 transition hover:border-slate-300"
                     >
-                      <div className="min-w-0 flex-1">
-                        <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
-                        <p className="text-[11px] text-slate-500 font-mono">
-                          {formatMoney(item.unitPrice)} / {item.unit}
-                        </p>
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        {/* Stepper */}
-                        <div className="flex items-center bg-slate-100 rounded-lg p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.productId, -1)}
-                            className="w-7 h-7 bg-white rounded flex items-center justify-center font-bold text-slate-700 shadow-2xs text-xs hover:bg-slate-50 active:scale-95 transition"
-                            title="Decrease quantity"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={item.quantity === 0 ? '' : item.quantity}
-                            onChange={(e) => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                              setCartItemQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
-                            }}
-                            onBlur={() => {
-                              if (!item.quantity || item.quantity <= 0) {
-                                setCartItemQty(item.productId, 1);
-                              }
-                            }}
-                            onFocus={(e) => e.target.select()}
-                            className="w-11 h-7 bg-transparent text-center font-mono font-bold text-xs text-slate-900 focus:outline-none focus:bg-white focus:rounded focus:ring-1 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(item.productId, 1)}
-                            className="w-7 h-7 bg-white rounded flex items-center justify-center font-bold text-slate-700 shadow-2xs text-xs hover:bg-slate-50 active:scale-95 transition"
-                            title="Increase quantity"
-                          >
-                            +
-                          </button>
+                      {/* Top Row: Product Info & Line Total & Delete */}
+                      <div className="flex items-start justify-between gap-2">
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <h4 className="text-xs font-bold text-slate-900 truncate">{item.name}</h4>
+                            {isPureFree && (
+                              <span className="px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[9px] font-bold uppercase tracking-wider">
+                                Free Promo Gift
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                            <span className="font-semibold text-slate-700">{formatMoney(item.unitPrice)}</span> / {item.unit}
+                            {item.availableStock !== undefined && (
+                              <span className="ml-1 text-slate-400">• Lorry Stock: {item.availableStock}</span>
+                            )}
+                          </p>
                         </div>
 
-                        {/* Line Total */}
-                        <span className="w-16 text-right font-mono font-bold text-xs text-slate-900">
-                          {formatMoney(lineTotal)}
-                        </span>
+                        <div className="flex items-center gap-2 shrink-0">
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-xs text-slate-900 block">
+                              {item.quantity > 0 ? formatMoney(lineTotal) : 'Rs. 0.00'}
+                            </span>
+                            {item.freeQuantity > 0 && (
+                              <span className="text-[10px] font-semibold text-emerald-600 block">
+                                +{item.freeQuantity} Free
+                              </span>
+                            )}
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => removeCartItem(item.productId)}
+                            className="p-1.5 text-slate-300 hover:text-rose-600 hover:bg-rose-50 rounded-lg transition cursor-pointer"
+                            title="Remove item"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      </div>
 
-                        {/* Trash */}
-                        <button
-                          type="button"
-                          onClick={() => removeCartItem(item.productId)}
-                          className="p-1 text-slate-300 hover:text-red-500"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      {/* Bottom Row: Ultra-clean dual controls (Billed Qty + Free Issue Qty) */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 bg-slate-50/70 -mx-3 -mb-3 px-3 py-2 rounded-b-2xl">
+                        {/* Left: Billed Quantity */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Billed:</span>
+                          <div className="flex items-center bg-white border border-slate-200 rounded-lg p-0.5 shadow-2xs">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.productId, -1)}
+                              className="w-6 h-6 bg-slate-50 hover:bg-slate-100 rounded flex items-center justify-center font-bold text-slate-700 text-xs active:scale-95 transition cursor-pointer"
+                              title="Decrease billed quantity"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={item.quantity === 0 ? '0' : item.quantity}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                setCartItemQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-10 h-6 bg-transparent text-center font-mono font-bold text-xs text-slate-900 focus:outline-none focus:bg-blue-50/50 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(item.productId, 1)}
+                              className="w-6 h-6 bg-slate-50 hover:bg-slate-100 rounded flex items-center justify-center font-bold text-slate-700 text-xs active:scale-95 transition cursor-pointer"
+                              title="Increase billed quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Right: Manual Free Issue */}
+                        <div className="flex items-center gap-1.5">
+                          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-0.5">
+                            <Gift className="w-3 h-3 text-emerald-600" />
+                            <span>Free:</span>
+                          </span>
+
+                          {item.freeQuantity > 0 ? (
+                            <div className="flex items-center bg-emerald-50 border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
+                              <button
+                                type="button"
+                                onClick={() => updateCartFreeQty(item.productId, -1)}
+                                className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
+                                title="Decrease free issue units"
+                              >
+                                -
+                              </button>
+                              <input
+                                type="number"
+                                min="0"
+                                value={item.freeQuantity}
+                                onChange={(e) => {
+                                  const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                  setCartItemFreeQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
+                                }}
+                                onFocus={(e) => e.target.select()}
+                                className="w-10 h-6 bg-transparent text-center font-mono font-bold text-xs text-emerald-900 focus:outline-none focus:bg-white rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                              />
+                              <button
+                                type="button"
+                                onClick={() => updateCartFreeQty(item.productId, 1)}
+                                className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
+                                title="Increase free issue units"
+                              >
+                                +
+                              </button>
+                            </div>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => updateCartFreeQty(item.productId, 1)}
+                              className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+                              title="Add free promotional units for this item"
+                            >
+                              <Plus className="w-3 h-3" />
+                              <span>Free Issue</span>
+                            </button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   );
@@ -2575,7 +2769,14 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
                 {/* Subtotal Bar */}
                 <div className="p-3 bg-slate-100 rounded-xl flex items-center justify-between font-bold text-xs">
-                  <span className="text-slate-600">Total ({totalItemsCount} items)</span>
+                  <div>
+                    <span className="text-slate-700">Total ({totalItemsCount} billed)</span>
+                    {totalFreeItemsCount > 0 && (
+                      <span className="ml-2 px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                        +{totalFreeItemsCount} Free
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono text-sm text-blue-600">{formatMoney(cartSubtotal)}</span>
                 </div>
 
@@ -2729,51 +2930,79 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       </p>
                     </div>
 
-                    <div className="shrink-0">
+                    <div className="shrink-0 flex items-center gap-1.5">
                       {inCart ? (
-                        <div className="flex items-center bg-blue-50 border border-blue-200 rounded-lg p-0.5">
-                          <button
-                            type="button"
-                            onClick={() => updateCartQty(product.id, -1)}
-                            className="w-7 h-7 bg-white rounded flex items-center justify-center font-bold text-blue-700 text-xs shadow-2xs hover:bg-blue-100 active:scale-95 transition"
-                            title="Decrease quantity"
-                          >
-                            -
-                          </button>
-                          <input
-                            type="number"
-                            min="1"
-                            step="1"
-                            value={inCart.quantity === 0 ? '' : inCart.quantity}
-                            onChange={(e) => {
-                              const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                              setCartItemQty(product.id, isNaN(val) ? 0 : Math.max(0, val));
-                            }}
-                            onBlur={() => {
-                              if (!inCart.quantity || inCart.quantity <= 0) {
-                                setCartItemQty(product.id, 1);
-                              }
-                            }}
-                            onFocus={(e) => e.target.select()}
-                            className="w-11 h-7 bg-transparent text-center font-mono font-bold text-xs text-blue-900 focus:outline-none focus:bg-white focus:rounded focus:ring-1 focus:ring-blue-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                          />
+                        <>
+                          <div className="flex items-center bg-blue-50 border border-blue-200 rounded-lg p-0.5">
+                            <button
+                              type="button"
+                              onClick={() => updateCartQty(product.id, -1)}
+                              className="w-7 h-7 bg-white rounded flex items-center justify-center font-bold text-blue-700 text-xs shadow-2xs hover:bg-blue-100 active:scale-95 transition cursor-pointer"
+                              title="Decrease quantity"
+                            >
+                              -
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              value={inCart.quantity === 0 ? '0' : inCart.quantity}
+                              onChange={(e) => {
+                                const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                setCartItemQty(product.id, isNaN(val) ? 0 : Math.max(0, val));
+                              }}
+                              onFocus={(e) => e.target.select()}
+                              className="w-9 h-7 bg-transparent text-center font-mono font-bold text-xs text-blue-900 focus:outline-none focus:bg-white focus:rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            <button
+                              type="button"
+                              onClick={() => addToCart(product, 1)}
+                              className="w-7 h-7 bg-blue-600 text-white rounded flex items-center justify-center font-bold text-xs shadow-2xs hover:bg-blue-700 active:scale-95 transition cursor-pointer"
+                              title="Increase quantity"
+                            >
+                              +
+                            </button>
+                          </div>
+
+                          {inCart.freeQuantity > 0 ? (
+                            <button
+                              type="button"
+                              onClick={() => updateCartFreeQty(product.id, 1)}
+                              className="px-2 py-1.5 rounded-lg bg-emerald-50 border border-emerald-300 text-emerald-800 text-[10px] font-bold hover:bg-emerald-100 transition shadow-2xs active:scale-95 cursor-pointer flex items-center gap-0.5"
+                              title="Tap to increase free units (+1)"
+                            >
+                              <Gift className="w-3 h-3 text-emerald-600" />
+                              <span>+{inCart.freeQuantity}F</span>
+                            </button>
+                          ) : (
+                            <button
+                              type="button"
+                              onClick={() => updateCartFreeQty(product.id, 1)}
+                              className="px-2 py-1.5 rounded-lg bg-slate-50 hover:bg-emerald-50 border border-slate-200 hover:border-emerald-300 text-slate-500 hover:text-emerald-700 text-[10px] font-semibold transition active:scale-95 cursor-pointer flex items-center gap-0.5"
+                              title="Add free issue"
+                            >
+                              <Gift className="w-3 h-3" />
+                              <span>+Free</span>
+                            </button>
+                          )}
+                        </>
+                      ) : (
+                        <div className="flex items-center gap-1">
                           <button
                             type="button"
                             onClick={() => addToCart(product, 1)}
-                            className="w-7 h-7 bg-blue-600 text-white rounded flex items-center justify-center font-bold text-xs shadow-2xs hover:bg-blue-700 active:scale-95 transition"
-                            title="Increase quantity"
+                            className="py-1 px-3 bg-blue-600 text-white font-bold text-xs rounded-lg shadow-xs hover:bg-blue-700 active:scale-95 transition cursor-pointer"
                           >
-                            +
+                            + Add
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => addFreeToCart(product, 1)}
+                            className="py-1 px-2 bg-emerald-50 hover:bg-emerald-100 text-emerald-700 border border-emerald-200 font-bold text-[11px] rounded-lg shadow-2xs active:scale-95 transition cursor-pointer"
+                            title="Add as 100% Free Promo Gift"
+                          >
+                            + Free
                           </button>
                         </div>
-                      ) : (
-                        <button
-                          type="button"
-                          onClick={() => addToCart(product, 1)}
-                          className="py-1 px-3 bg-blue-600 text-white font-bold text-xs rounded-lg shadow-xs hover:bg-blue-700 active:scale-95 transition"
-                        >
-                          + Add
-                        </button>
                       )}
                     </div>
                   </div>
@@ -2854,14 +3083,30 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
               {cart.map(item => (
                 <div key={item.productId} className="flex items-center justify-between text-xs py-0.5">
-                  <span className="text-slate-800 font-medium truncate pr-2">
-                    {item.name} × {item.quantity}
-                  </span>
+                  <div className="flex items-center gap-1.5 truncate pr-2">
+                    <span className="text-slate-800 font-medium truncate">
+                      {item.name} × {item.quantity}
+                    </span>
+                    {item.freeQuantity > 0 && (
+                      <span className="px-1.5 py-0.2 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold shrink-0">
+                        +{item.freeQuantity} Free
+                      </span>
+                    )}
+                  </div>
                   <span className="font-mono font-bold text-slate-900 shrink-0">
-                    {formatMoney(item.unitPrice * item.quantity)}
+                    {item.quantity > 0 ? formatMoney(item.unitPrice * item.quantity) : 'Rs. 0.00'}
                   </span>
                 </div>
               ))}
+              {totalFreeItemsCount > 0 && (
+                <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-emerald-700 font-semibold">
+                  <span className="flex items-center gap-1">
+                    <Gift className="w-3.5 h-3.5" />
+                    <span>Total Free Promotional Items:</span>
+                  </span>
+                  <span className="font-bold">+{totalFreeItemsCount} Units (Rs. 0.00)</span>
+                </div>
+              )}
             </div>
 
             {/* Payment Method Selector */}
