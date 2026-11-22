@@ -356,6 +356,10 @@ const INITIAL_OFFLINE_FALLBACK_DATA: CachedRepData = {
   }
 };
 
+// Global mutex to prevent concurrent sync loops from running in parallel
+let isGlobalSyncRunning = false;
+const inFlightSyncIds = new Set<string>();
+
 export const OfflineSyncService = {
   /**
    * Check if browser or native device currently has active internet connection
@@ -366,10 +370,24 @@ export const OfflineSyncService = {
 
   /**
    * Listen for network reconnection on Web, Electron, and Android via Capacitor Network
+   * Debounced to prevent simultaneous dual-event triggers from window.online and Capacitor Network
    */
   initNetworkListener(onStatusChange: (connected: boolean) => void): () => void {
-    const handleOnline = () => onStatusChange(true);
-    const handleOffline = () => onStatusChange(false);
+    let lastStatus: boolean | null = null;
+    let debounceTimer: any = null;
+
+    const dispatchStatus = (connected: boolean) => {
+      if (debounceTimer) clearTimeout(debounceTimer);
+      debounceTimer = setTimeout(() => {
+        if (lastStatus !== connected) {
+          lastStatus = connected;
+          onStatusChange(connected);
+        }
+      }, 350);
+    };
+
+    const handleOnline = () => dispatchStatus(true);
+    const handleOffline = () => dispatchStatus(false);
     if (typeof window !== 'undefined') {
       window.addEventListener('online', handleOnline);
       window.addEventListener('offline', handleOffline);
@@ -378,7 +396,7 @@ export const OfflineSyncService = {
     let removeCapacitorListener: (() => void) | null = null;
     try {
       Network.addListener('networkStatusChange', status => {
-        onStatusChange(status.connected);
+        dispatchStatus(status.connected);
       }).then(handle => {
         removeCapacitorListener = () => handle.remove();
       });
@@ -387,6 +405,7 @@ export const OfflineSyncService = {
     }
 
     return () => {
+      if (debounceTimer) clearTimeout(debounceTimer);
       if (typeof window !== 'undefined') {
         window.removeEventListener('online', handleOnline);
         window.removeEventListener('offline', handleOffline);
@@ -483,55 +502,86 @@ export const OfflineSyncService = {
 
   /**
    * Synchronize all pending offline bills with backend database
+   * Guarded with isGlobalSyncRunning mutex to prevent parallel duplicate execution
    */
   async syncAllPendingBills(
     onProgress?: (synced: number, total: number) => void
   ): Promise<{ success: boolean; syncedCount: number; errors: string[] }> {
-    const pending = this.getPendingBills();
-    if (pending.length === 0) {
+    if (isGlobalSyncRunning) {
+      console.log('[OfflineSync] Sync is already active in another thread/cycle, skipping parallel invocation.');
       return { success: true, syncedCount: 0, errors: [] };
     }
 
-    let syncedCount = 0;
-    const errors: string[] = [];
-
-    for (let i = 0; i < pending.length; i++) {
-      const bill = pending[i];
-      try {
-        if (bill.lorryId) {
-          await LorryService.enterDriverBill(bill.lorryId, bill.payload);
-        } else {
-          await OrderService.create(bill.payload);
-        }
-
-        // Successfully synced on server
-        syncedCount++;
-        this.removePendingBill(bill.localId);
-        if (onProgress) {
-          onProgress(syncedCount, pending.length);
-        }
-      } catch (err: any) {
-        console.error(`[OfflineSync] Failed syncing bill ${bill.orderNumber}:`, err);
-        const errMsg = err.response?.data?.error || err.message || 'Unknown network error';
-        errors.push(`${bill.orderNumber}: ${errMsg}`);
-        // If it's a persistent validation error (not network error), we record it on the bill
-        bill.syncError = errMsg;
+    isGlobalSyncRunning = true;
+    try {
+      const pending = this.getPendingBills();
+      if (pending.length === 0) {
+        return { success: true, syncedCount: 0, errors: [] };
       }
+
+      let syncedCount = 0;
+      const errors: string[] = [];
+
+      for (let i = 0; i < pending.length; i++) {
+        const bill = pending[i];
+        if (inFlightSyncIds.has(bill.localId)) {
+          continue;
+        }
+
+        inFlightSyncIds.add(bill.localId);
+
+        try {
+          // Guarantee unique paperBillNumber is attached for backend idempotency
+          if (!bill.payload.paperBillNumber) {
+            bill.payload.paperBillNumber = bill.orderNumber;
+          }
+
+          if (bill.lorryId) {
+            await LorryService.enterDriverBill(bill.lorryId, bill.payload);
+          } else {
+            await OrderService.create(bill.payload);
+          }
+
+          // Successfully synced on server
+          syncedCount++;
+          this.removePendingBill(bill.localId);
+          inFlightSyncIds.delete(bill.localId);
+          if (onProgress) {
+            onProgress(syncedCount, pending.length);
+          }
+        } catch (err: any) {
+          inFlightSyncIds.delete(bill.localId);
+          console.error(`[OfflineSync] Failed syncing bill ${bill.orderNumber}:`, err);
+          const errMsg = err.response?.data?.error || err.message || 'Unknown network error';
+          
+          // If server reports it already exists or was created, safely remove it from pending
+          if (errMsg.toLowerCase().includes('already exists') || errMsg.toLowerCase().includes('duplicate')) {
+            console.log(`[OfflineSync] Bill ${bill.orderNumber} was already acknowledged by server, removing from queue.`);
+            this.removePendingBill(bill.localId);
+            syncedCount++;
+          } else {
+            errors.push(`${bill.orderNumber}: ${errMsg}`);
+            bill.syncError = errMsg;
+          }
+        }
+      }
+
+      // Save updated pending list if some had errors
+      const remaining = this.getPendingBills();
+      if (remaining.length > 0) {
+        localStorage.setItem(STORAGE_KEYS.PENDING_BILLS, JSON.stringify(remaining));
+      }
+
+      localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
+
+      return {
+        success: errors.length === 0,
+        syncedCount,
+        errors
+      };
+    } finally {
+      isGlobalSyncRunning = false;
     }
-
-    // Save updated pending list if some had errors
-    const remaining = this.getPendingBills();
-    if (remaining.length > 0) {
-      localStorage.setItem(STORAGE_KEYS.PENDING_BILLS, JSON.stringify(remaining));
-    }
-
-    localStorage.setItem(STORAGE_KEYS.LAST_SYNC, new Date().toISOString());
-
-    return {
-      success: errors.length === 0,
-      syncedCount,
-      errors
-    };
   }
 };
 

@@ -92,7 +92,7 @@ public class BluetoothPrinterPlugin extends Plugin {
     }
 
     @PermissionCallback
-    private void pairedDevicesCallback(PluginCall call) {
+    public void pairedDevicesCallback(PluginCall call) {
         BluetoothAdapter adapter = getBluetoothAdapter();
         if (adapter == null) {
             call.reject("Bluetooth is not supported on this device.");
@@ -167,7 +167,7 @@ public class BluetoothPrinterPlugin extends Plugin {
     }
 
     @PermissionCallback
-    private void printBytesCallback(PluginCall call) {
+    public void printBytesCallback(PluginCall call) {
         if (!hasBluetoothPermission()) {
             call.reject("Bluetooth Nearby Devices permission was not granted. Please allow in Android App Settings.");
             return;

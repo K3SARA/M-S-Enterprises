@@ -3962,8 +3962,87 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
     return res.status(400).json({ error: 'Customer and at least one bill item or return item are required.' });
   }
 
+  // 1. Idempotency Check by paperBillNumber (client unique bill reference / offline sync id)
+  const cleanPaperBill = typeof paperBillNumber === 'string' && paperBillNumber.trim().length > 0 ? paperBillNumber.trim() : null;
+  if (cleanPaperBill) {
+    try {
+      const existingOrder = await prisma.order.findFirst({
+        where: {
+          paperBillNumber: cleanPaperBill,
+          lorryId,
+          status: { not: 'CANCELLED' }
+        },
+        include: {
+          customer: true,
+          lorry: true,
+          items: { include: { product: true } },
+          returns: { include: { product: true } }
+        }
+      });
+      if (existingOrder) {
+        console.log(`[Idempotency] Bill with paperBillNumber "${cleanPaperBill}" already exists (${existingOrder.orderNumber}). Returning existing order.`);
+        return res.json(existingOrder);
+      }
+    } catch (e) {
+      console.warn('[Idempotency] Failed initial paperBillNumber check', e);
+    }
+  }
+
+  // 2. Rapid Duplicate Protection: prevent identical duplicate bills within 20 seconds
+  try {
+    const twentySecsAgo = new Date(Date.now() - 20000);
+    const recentOrders = await prisma.order.findMany({
+      where: {
+        customerId,
+        lorryId,
+        status: { not: 'CANCELLED' },
+        createdAt: { gte: twentySecsAgo }
+      },
+      include: {
+        customer: true,
+        lorry: true,
+        items: { include: { product: true } },
+        returns: { include: { product: true } }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    if (recentOrders.length > 0) {
+      const incomingItemCount = Array.isArray(items) ? items.length : 0;
+      for (const ro of recentOrders) {
+        if (ro.items.length === incomingItemCount) {
+          console.log(`[Idempotency] Rapid duplicate bill detected within 20s for customer ${customerId} on lorry ${lorryId}. Returning existing order ${ro.orderNumber}.`);
+          return res.json(ro);
+        }
+      }
+    }
+  } catch (e) {
+    console.warn('[Idempotency] Failed rapid duplicate check', e);
+  }
+
   try {
     const orderResult = await prisma.$transaction(async (tx) => {
+      // Internal transaction idempotency safeguard
+      if (cleanPaperBill) {
+        const existingInTx = await tx.order.findFirst({
+          where: {
+            paperBillNumber: cleanPaperBill,
+            lorryId,
+            status: { not: 'CANCELLED' }
+          },
+          include: {
+            customer: true,
+            lorry: true,
+            items: { include: { product: true } },
+            returns: { include: { product: true } }
+          }
+        });
+        if (existingInTx) {
+          console.log(`[Idempotency TX] Existing order found: ${existingInTx.orderNumber}`);
+          return existingInTx;
+        }
+      }
+
       const lorry = await tx.lorry.findUniqueOrThrow({
         where: { id: lorryId },
         include: { route: true }
@@ -6032,6 +6111,30 @@ app.post('/api/orders', async (req: Request, res: Response) => {
 
   if ((!Array.isArray(items) || items.length === 0) && (!Array.isArray(returnItems) || returnItems.length === 0)) {
     return res.status(400).json({ error: 'At least one bill item or return item is required for the bill.' });
+  }
+
+  // Idempotency Check by paperBillNumber
+  const cleanPaperBill = typeof paperBillNumber === 'string' && paperBillNumber.trim().length > 0 ? paperBillNumber.trim() : null;
+  if (cleanPaperBill) {
+    try {
+      const existingOrder = await prisma.order.findFirst({
+        where: {
+          paperBillNumber: cleanPaperBill,
+          status: { not: 'CANCELLED' }
+        },
+        include: {
+          customer: true,
+          items: { include: { product: true } },
+          returns: { include: { product: true } }
+        }
+      });
+      if (existingOrder) {
+        console.log(`[Idempotency] Direct order with paperBillNumber "${cleanPaperBill}" already exists (${existingOrder.orderNumber}). Returning existing.`);
+        return res.json(existingOrder);
+      }
+    } catch (e) {
+      console.warn('[Idempotency] Failed paperBillNumber check in /api/orders', e);
+    }
   }
 
   try {

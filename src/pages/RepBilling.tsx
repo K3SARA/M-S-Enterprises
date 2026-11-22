@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Users,
   Search,
@@ -213,10 +213,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [isSyncing, setIsSyncing] = useState<boolean>(false);
   const [syncStatusToast, setSyncStatusToast] = useState<string | null>(null);
 
-  const handleSyncPending = async () => {
-    const pending = OfflineSyncService.getPendingBills();
-    if (pending.length === 0 || isSyncing) return;
+  // Synchronous ref guards to prevent accidental double-clicks or parallel sync executions
+  const isSubmittingCheckoutRef = useRef<boolean>(false);
+  const isSyncingPendingRef = useRef<boolean>(false);
 
+  const handleSyncPending = async () => {
+    if (isSyncingPendingRef.current || isSyncing) return;
+    const pending = OfflineSyncService.getPendingBills();
+    if (pending.length === 0) return;
+
+    isSyncingPendingRef.current = true;
     setIsSyncing(true);
     setSyncStatusToast(`🔄 Syncing ${pending.length} offline bill(s)...`);
 
@@ -242,6 +248,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       setTimeout(() => setSyncStatusToast(null), 3500);
     } finally {
       setIsSyncing(false);
+      isSyncingPendingRef.current = false;
     }
   };
 
@@ -1175,6 +1182,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   // Checkout submission
   const handleFinalCheckout = async () => {
+    if (isSubmittingCheckoutRef.current || submitting) {
+      console.warn('[RepBilling] Checkout submission in progress, ignoring duplicate tap.');
+      return;
+    }
+
     if (!selectedCustomerId) {
       setErrorMessage('Please select a customer first.');
       setCurrentStep(1);
@@ -1202,6 +1214,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       return;
     }
 
+    isSubmittingCheckoutRef.current = true;
     try {
       setSubmitting(true);
       setErrorMessage(null);
@@ -1224,7 +1237,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             ]
           : [];
 
+      // Generate a globally unique client reference ID for idempotency deduplication
+      const clientBillRef = `BILL-${Date.now().toString().slice(-6)}-${Math.floor(100 + Math.random() * 900)}`;
+
       const orderPayload: any = {
+        paperBillNumber: clientBillRef,
         customerId: selectedCustomerId,
         paymentMethod,
         items: itemsPayload,
@@ -1249,9 +1266,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       const createOfflineOrder = (): Order => {
         const queuedBill: QueuedOfflineBill = {
           localId: `offline_${Date.now()}_${Math.random().toString(36).substring(2, 6)}`,
-          orderNumber: `OFF-${Date.now().toString().slice(-6)}`,
+          orderNumber: clientBillRef,
           lorryId: selectedLorryId || undefined,
-          payload: orderPayload,
+          payload: { ...orderPayload, paperBillNumber: clientBillRef },
           createdAt: new Date().toISOString(),
           customerName: selectedCustomer?.name || 'Customer',
           totalAmount: finalTotal,
@@ -1355,6 +1372,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       setErrorMessage(err.response?.data?.error || err.message || 'Failed to complete bill.');
     } finally {
       setSubmitting(false);
+      isSubmittingCheckoutRef.current = false;
     }
   };
 
