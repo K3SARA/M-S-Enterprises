@@ -49,7 +49,8 @@ import {
   Wifi,
   WifiOff,
   BarChart3,
-  Gift
+  Gift,
+  Tag
 } from 'lucide-react';
 import {
   Customer,
@@ -89,7 +90,9 @@ interface CartItem {
   quantity: number;
   freeQuantity: number;
   manualFree?: boolean;
-  discountPercent: number;
+  discountType?: '%' | 'Rs';
+  discountPercent?: number;
+  discountAmount?: number;
 }
 
 interface RepBillingProps {
@@ -148,7 +151,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [chequeNumber, setChequeNumber] = useState<string>('');
   const [bankName, setBankName] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
-  const [globalDiscountPercent] = useState<number>(0);
+  // Bill Discount State
+  const [billDiscountType, setBillDiscountType] = useState<'%' | 'Rs'>('%');
+  const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
+  const [billDiscountManual, setBillDiscountManual] = useState<boolean>(false);
+  const [openItemDiscounts, setOpenItemDiscounts] = useState<Record<string, boolean>>({});
   const [useReturnCredit, setUseReturnCredit] = useState<boolean>(true);
   const [notes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
@@ -1234,9 +1241,83 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     setCart(prev => prev.filter(i => i.productId !== productId));
   };
 
+  // Auto-sync customer default discount to bill discount when customer changes (unless manually adjusted)
+  useEffect(() => {
+    if (selectedCustomer && !billDiscountManual) {
+      setBillDiscountType('%');
+      setBillDiscountValue(selectedCustomer.discountPercentage || 0);
+    }
+  }, [selectedCustomerId, selectedCustomer, billDiscountManual]);
+
+  const toggleItemDiscountOpen = (productId: string) => {
+    setOpenItemDiscounts(prev => ({ ...prev, [productId]: !prev[productId] }));
+  };
+
+  const setCartItemDiscountType = (productId: string, type: '%' | 'Rs') => {
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        return { ...item, discountType: type };
+      }
+      return item;
+    }));
+  };
+
+  const setCartItemDiscountVal = (productId: string, val: number) => {
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        if (item.discountType === 'Rs') {
+          return { ...item, discountAmount: val, discountPercent: 0 };
+        } else {
+          return { ...item, discountPercent: val, discountAmount: 0 };
+        }
+      }
+      return item;
+    }));
+  };
+
+  const clearCartItemDiscount = (productId: string) => {
+    setCart(prev => prev.map(item => {
+      if (item.productId === productId) {
+        return { ...item, discountPercent: 0, discountAmount: 0 };
+      }
+      return item;
+    }));
+  };
+
+  const calculateCartItemDiscount = (item: CartItem) => {
+    const itemGross = item.unitPrice * (item.quantity || 0);
+    if (itemGross <= 0) return 0;
+    if (item.discountType === 'Rs') {
+      return Math.min(itemGross, item.discountAmount || 0);
+    }
+    const pct = Math.min(100, Math.max(0, item.discountPercent || 0));
+    return (itemGross * pct) / 100;
+  };
+
   const cartSubtotal = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.unitPrice * item.quantity, 0);
   }, [cart]);
+
+  const totalItemDiscounts = useMemo(() => {
+    return cart.reduce((sum, item) => sum + calculateCartItemDiscount(item), 0);
+  }, [cart]);
+
+  const subtotalAfterItemDiscounts = Math.max(0, cartSubtotal - totalItemDiscounts);
+
+  const billDiscountAmount = useMemo(() => {
+    if (billDiscountType === 'Rs') {
+      return Math.min(subtotalAfterItemDiscounts, billDiscountValue || 0);
+    }
+    const pct = Math.min(100, Math.max(0, billDiscountValue || 0));
+    return (subtotalAfterItemDiscounts * pct) / 100;
+  }, [subtotalAfterItemDiscounts, billDiscountType, billDiscountValue]);
+
+  const billDiscountPercentage = useMemo(() => {
+    if (billDiscountType === '%') return billDiscountValue || 0;
+    return subtotalAfterItemDiscounts > 0 ? (billDiscountAmount / subtotalAfterItemDiscounts) * 100 : 0;
+  }, [subtotalAfterItemDiscounts, billDiscountType, billDiscountValue, billDiscountAmount]);
+
+  const totalDiscountAmount = totalItemDiscounts + billDiscountAmount;
 
   const totalItemsCount = useMemo(() => {
     return cart.reduce((sum, item) => sum + item.quantity, 0);
@@ -1249,15 +1330,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const availableReturnCredit = selectedCustomer?.returnCreditBalance || 0;
   const appliedReturnCredit = useMemo(() => {
     if (!useReturnCredit || availableReturnCredit <= 0) return 0;
-    const discount = (cartSubtotal * (globalDiscountPercent || 0)) / 100;
-    const grossAfterDiscount = Math.max(0, cartSubtotal - discount);
-    return Math.min(availableReturnCredit, grossAfterDiscount);
-  }, [useReturnCredit, availableReturnCredit, cartSubtotal, globalDiscountPercent]);
+    const grossAfterDiscounts = Math.max(0, cartSubtotal - totalDiscountAmount);
+    return Math.min(availableReturnCredit, grossAfterDiscounts);
+  }, [useReturnCredit, availableReturnCredit, cartSubtotal, totalDiscountAmount]);
 
   const finalTotal = useMemo(() => {
-    const discount = (cartSubtotal * (globalDiscountPercent || 0)) / 100;
-    return Math.max(0, cartSubtotal - discount - appliedReturnCredit);
-  }, [cartSubtotal, globalDiscountPercent, appliedReturnCredit]);
+    return Math.max(0, cartSubtotal - totalDiscountAmount - appliedReturnCredit);
+  }, [cartSubtotal, totalDiscountAmount, appliedReturnCredit]);
 
   // Date-filtered bills (filtered by selected date range)
   const dateFilteredBills = useMemo(() => {
@@ -1450,12 +1529,26 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       setSubmitting(true);
       setErrorMessage(null);
 
-      const itemsPayload = cart.map(item => ({
-        productId: item.productId,
-        quantity: item.quantity,
-        freeQuantity: item.freeQuantity || 0,
-        unitPrice: item.unitPrice
-      }));
+      const itemsPayload = cart.map(item => {
+        const itemGross = item.unitPrice * (item.quantity || 0);
+        let itemDiscAmount = 0;
+        let itemDiscPercent = 0;
+        if (item.discountType === 'Rs') {
+          itemDiscAmount = Math.min(itemGross, item.discountAmount || 0);
+          itemDiscPercent = itemGross > 0 ? (itemDiscAmount / itemGross) * 100 : 0;
+        } else {
+          itemDiscPercent = Math.min(100, Math.max(0, item.discountPercent || 0));
+          itemDiscAmount = (itemGross * itemDiscPercent) / 100;
+        }
+        return {
+          productId: item.productId,
+          quantity: item.quantity,
+          freeQuantity: item.freeQuantity || 0,
+          unitPrice: item.unitPrice,
+          discountPercent: itemDiscPercent,
+          discountAmount: itemDiscAmount
+        };
+      });
 
       const previousBillsPayload =
         billingMethod === 'BILL_TO_BILL' && collectPrevBill && customerUnpaidBills.length > 0 && customerUnpaidBills[0]
@@ -1476,8 +1569,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         customerId: selectedCustomerId,
         paymentMethod,
         items: itemsPayload,
-        discountAmount: (cartSubtotal * (globalDiscountPercent || 0)) / 100,
-        discountPercentage: globalDiscountPercent,
+        discountAmount: billDiscountAmount,
+        discountPercentage: billDiscountPercentage,
         appliedCreditAmount: appliedReturnCredit > 0 ? appliedReturnCredit : undefined,
         notes: notes.trim() || undefined,
         settlePreviousBills: previousBillsPayload,
@@ -1547,7 +1640,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           bankName: bankName.trim() || null,
           chequeDate: chequeDate || null,
           subtotal: cartSubtotal,
-          discountAmount: (cartSubtotal * (globalDiscountPercent || 0)) / 100,
+          discountAmount: totalDiscountAmount,
           appliedCreditAmount: appliedReturnCredit > 0 ? appliedReturnCredit : undefined,
           taxAmount: 0,
           netTotal: finalTotal,
@@ -2629,8 +2722,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 </div>
 
                 {cart.map(item => {
-                  const lineTotal = item.unitPrice * item.quantity;
+                  const itemGross = item.unitPrice * item.quantity;
+                  const itemDiscount = calculateCartItemDiscount(item);
+                  const lineTotal = Math.max(0, itemGross - itemDiscount);
                   const isPureFree = item.quantity === 0 && (item.freeQuantity || 0) > 0;
+                  const isDiscountOpen = Boolean(openItemDiscounts[item.productId] || itemDiscount > 0);
+
                   return (
                     <div
                       key={item.productId}
@@ -2660,6 +2757,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                             <span className="font-mono font-bold text-xs text-slate-900 block">
                               {item.quantity > 0 ? formatMoney(lineTotal) : 'Rs. 0.00'}
                             </span>
+                            {itemDiscount > 0 && (
+                              <span className="text-[10px] font-mono text-amber-600 line-through block">
+                                {formatMoney(itemGross)}
+                              </span>
+                            )}
                             {item.freeQuantity > 0 && (
                               <span className="text-[10px] font-semibold text-emerald-600 block">
                                 +{item.freeQuantity} Free
@@ -2677,8 +2779,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         </div>
                       </div>
 
-                      {/* Bottom Row: Ultra-clean dual controls (Billed Qty + Free Issue Qty) */}
-                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 bg-slate-50/70 -mx-3 -mb-3 px-3 py-2 rounded-b-2xl">
+                      {/* Bottom Row: Ultra-clean dual controls (Billed Qty + Free Issue Qty + Discount Trigger) */}
+                      <div className="flex items-center justify-between gap-2 pt-2 border-t border-slate-100 bg-slate-50/70 -mx-3 -mb-3 px-3 py-2 rounded-b-2xl flex-wrap">
                         {/* Left: Billed Quantity */}
                         <div className="flex items-center gap-1.5">
                           <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider">Billed:</span>
@@ -2713,71 +2815,146 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                           </div>
                         </div>
 
-                        {/* Right: Manual Free Issue */}
-                        <div className="flex items-center gap-1.5">
-                          <span className="text-[10px] font-bold text-emerald-700 uppercase tracking-wider flex items-center gap-0.5">
-                            <Gift className="w-3 h-3 text-emerald-600" />
-                            <span>Free:</span>
-                          </span>
-
-                          {item.freeQuantity > 0 ? (
-                            <div className="flex items-center bg-emerald-50 border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
-                              <button
-                                type="button"
-                                onClick={() => updateCartFreeQty(item.productId, -1)}
-                                className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
-                                title="Decrease free issue units"
-                              >
-                                -
-                              </button>
-                              <input
-                                type="number"
-                                min="0"
-                                value={item.freeQuantity}
-                                onChange={(e) => {
-                                  const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                                  setCartItemFreeQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
-                                }}
-                                onFocus={(e) => e.target.select()}
-                                className="w-10 h-6 bg-transparent text-center font-mono font-bold text-xs text-emerald-900 focus:outline-none focus:bg-white rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                              />
+                        {/* Right: Free Issue & Discount Controls */}
+                        <div className="flex items-center gap-2">
+                          {/* Free Issue Control */}
+                          <div className="flex items-center gap-1">
+                            {item.freeQuantity > 0 ? (
+                              <div className="flex items-center bg-emerald-50 border border-emerald-300 rounded-lg p-0.5 shadow-2xs">
+                                <button
+                                  type="button"
+                                  onClick={() => updateCartFreeQty(item.productId, -1)}
+                                  className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
+                                  title="Decrease free issue units"
+                                >
+                                  -
+                                </button>
+                                <input
+                                  type="number"
+                                  min="0"
+                                  value={item.freeQuantity}
+                                  onChange={(e) => {
+                                    const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
+                                    setCartItemFreeQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
+                                  }}
+                                  onFocus={(e) => e.target.select()}
+                                  className="w-9 h-6 bg-transparent text-center font-mono font-bold text-xs text-emerald-900 focus:outline-none focus:bg-white rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                                />
+                                <button
+                                  type="button"
+                                  onClick={() => updateCartFreeQty(item.productId, 1)}
+                                  className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
+                                  title="Increase free issue units"
+                                >
+                                  +
+                                </button>
+                              </div>
+                            ) : (
                               <button
                                 type="button"
                                 onClick={() => updateCartFreeQty(item.productId, 1)}
-                                className="w-6 h-6 bg-white hover:bg-emerald-100 rounded flex items-center justify-center font-bold text-emerald-800 text-xs active:scale-95 transition cursor-pointer"
-                                title="Increase free issue units"
+                                className="px-2 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-[10px] flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+                                title="Add free promotional units for this item"
                               >
-                                +
+                                <Plus className="w-2.5 h-2.5" />
+                                <span>Free</span>
                               </button>
-                            </div>
-                          ) : (
+                            )}
+                          </div>
+
+                          {/* Quick Discount Trigger Button (when micro-row not expanded) */}
+                          {!isDiscountOpen && (
                             <button
                               type="button"
-                              onClick={() => updateCartFreeQty(item.productId, 1)}
-                              className="px-2.5 py-1 rounded-lg bg-emerald-50 hover:bg-emerald-100 border border-emerald-200 text-emerald-700 font-bold text-[11px] flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
-                              title="Add free promotional units for this item"
+                              onClick={() => toggleItemDiscountOpen(item.productId)}
+                              className="px-2 py-1 rounded-lg bg-white hover:bg-amber-50 border border-slate-200 hover:border-amber-300 text-slate-600 hover:text-amber-700 font-bold text-[10px] flex items-center gap-1 transition active:scale-95 cursor-pointer shadow-2xs"
+                              title="Add item-wise discount"
                             >
-                              <Plus className="w-3 h-3" />
-                              <span>Free Issue</span>
+                              <Tag className="w-2.5 h-2.5 text-amber-600" />
+                              <span>+ Disc</span>
                             </button>
                           )}
                         </div>
                       </div>
+
+                      {/* Expandable Item Discount Micro-Bar */}
+                      {isDiscountOpen && (
+                        <div className="flex items-center justify-between gap-2 pt-2 border-t border-dashed border-slate-200 mt-2">
+                          <div className="flex items-center gap-1.5">
+                            <Tag className="w-3 h-3 text-amber-600" />
+                            <span className="text-[10px] font-bold text-amber-900 uppercase tracking-wider">Item Disc:</span>
+                          </div>
+                          <div className="flex items-center gap-1.5">
+                            <div className="inline-flex rounded-lg bg-slate-100 border border-slate-200 p-0.5 text-[10px] font-bold">
+                              <button
+                                type="button"
+                                onClick={() => setCartItemDiscountType(item.productId, '%')}
+                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
+                                  item.discountType !== 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                                }`}
+                              >
+                                %
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => setCartItemDiscountType(item.productId, 'Rs')}
+                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
+                                  item.discountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                                }`}
+                              >
+                                Rs
+                              </button>
+                            </div>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={item.discountType === 'Rs' ? (item.discountAmount ?? '') : (item.discountPercent ?? '')}
+                              onChange={(e) => setCartItemDiscountVal(item.productId, parseFloat(e.target.value) || 0)}
+                              className="w-14 h-6 bg-white border border-slate-200 rounded-lg text-center font-mono font-bold text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
+                            {itemDiscount > 0 && (
+                              <span className="text-[10px] font-mono font-bold text-amber-700">
+                                (-{formatMoney(itemDiscount)})
+                              </span>
+                            )}
+                            <button
+                              type="button"
+                              onClick={() => {
+                                clearCartItemDiscount(item.productId);
+                                setOpenItemDiscounts(prev => ({ ...prev, [item.productId]: false }));
+                              }}
+                              className="w-5 h-5 flex items-center justify-center rounded-md hover:bg-slate-100 text-slate-400 hover:text-slate-600 text-xs transition cursor-pointer"
+                              title="Clear / Close discount"
+                            >
+                              ✕
+                            </button>
+                          </div>
+                        </div>
+                      )}
                     </div>
                   );
                 })}
 
                 {/* Subtotal Bar */}
-                <div className="p-3 bg-slate-100 rounded-xl flex items-center justify-between font-bold text-xs">
-                  <div>
-                    <span className="text-slate-700">Total ({totalItemsCount} billed)</span>
-                    {totalFreeItemsCount > 0 && (
-                      <span className="ml-2 px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
-                        +{totalFreeItemsCount} Free
-                      </span>
-                    )}
+                <div className="p-3 bg-slate-100 rounded-xl space-y-1 text-xs">
+                  <div className="flex items-center justify-between font-bold">
+                    <div>
+                      <span className="text-slate-700">Total ({totalItemsCount} billed)</span>
+                      {totalFreeItemsCount > 0 && (
+                        <span className="ml-2 px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 text-[10px] font-bold">
+                          +{totalFreeItemsCount} Free
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono text-sm text-blue-600">{formatMoney(cartSubtotal - totalItemDiscounts)}</span>
                   </div>
-                  <span className="font-mono text-sm text-blue-600">{formatMoney(cartSubtotal)}</span>
+                  {totalItemDiscounts > 0 && (
+                    <div className="flex items-center justify-between text-[11px] text-amber-700 font-semibold pt-1 border-t border-slate-200">
+                      <span>Item Discounts Applied:</span>
+                      <span className="font-mono">-{formatMoney(totalItemDiscounts)}</span>
+                    </div>
+                  )}
                 </div>
 
                 {/* Actions */}
@@ -3081,23 +3258,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 <span>Price</span>
               </div>
 
-              {cart.map(item => (
-                <div key={item.productId} className="flex items-center justify-between text-xs py-0.5">
-                  <div className="flex items-center gap-1.5 truncate pr-2">
-                    <span className="text-slate-800 font-medium truncate">
-                      {item.name} × {item.quantity}
-                    </span>
-                    {item.freeQuantity > 0 && (
-                      <span className="px-1.5 py-0.2 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold shrink-0">
-                        +{item.freeQuantity} Free
+              {cart.map(item => {
+                const itemGross = item.unitPrice * item.quantity;
+                const itemDisc = calculateCartItemDiscount(item);
+                const lineTot = Math.max(0, itemGross - itemDisc);
+
+                return (
+                  <div key={item.productId} className="flex items-center justify-between text-xs py-0.5">
+                    <div className="flex items-center gap-1.5 truncate pr-2">
+                      <span className="text-slate-800 font-medium truncate">
+                        {item.name} × {item.quantity}
                       </span>
-                    )}
+                      {item.freeQuantity > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-emerald-50 border border-emerald-200 text-emerald-700 text-[10px] font-bold shrink-0">
+                          +{item.freeQuantity} Free
+                        </span>
+                      )}
+                      {itemDisc > 0 && (
+                        <span className="px-1.5 py-0.2 rounded bg-amber-50 border border-amber-200 text-amber-700 text-[10px] font-bold shrink-0">
+                          -{formatMoney(itemDisc)}
+                        </span>
+                      )}
+                    </div>
+                    <span className="font-mono font-bold text-slate-900 shrink-0">
+                      {item.quantity > 0 ? formatMoney(lineTot) : 'Rs. 0.00'}
+                    </span>
                   </div>
-                  <span className="font-mono font-bold text-slate-900 shrink-0">
-                    {item.quantity > 0 ? formatMoney(item.unitPrice * item.quantity) : 'Rs. 0.00'}
-                  </span>
-                </div>
-              ))}
+                );
+              })}
               {totalFreeItemsCount > 0 && (
                 <div className="pt-1.5 border-t border-slate-100 flex items-center justify-between text-[11px] text-emerald-700 font-semibold">
                   <span className="flex items-center gap-1">
@@ -3285,6 +3473,71 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 </div>
               </div>
             )}
+
+            {/* Total Bill Discount Control Card */}
+            <div className="p-3 bg-gradient-to-r from-amber-50/80 to-orange-50/60 border border-amber-200/90 rounded-xl space-y-2 animate-fadeIn shadow-2xs">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-1.5">
+                  <Tag className="w-3.5 h-3.5 text-amber-600" />
+                  <span className="text-xs font-bold text-amber-900">Total Bill Discount</span>
+                  {selectedCustomer?.discountPercentage && selectedCustomer.discountPercentage > 0 && !billDiscountManual && (
+                    <span className="px-1.5 py-0.2 rounded bg-amber-200/80 text-amber-800 text-[9px] font-bold">
+                      Default {selectedCustomer.discountPercentage}%
+                    </span>
+                  )}
+                </div>
+                <div className="flex items-center gap-1.5">
+                  <div className="inline-flex rounded-lg bg-white border border-amber-300 p-0.5 text-[10px] font-bold shadow-2xs">
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillDiscountType('%');
+                        setBillDiscountManual(true);
+                      }}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
+                        billDiscountType === '%' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                      }`}
+                    >
+                      %
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        setBillDiscountType('Rs');
+                        setBillDiscountManual(true);
+                      }}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
+                        billDiscountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                      }`}
+                    >
+                      Rs
+                    </button>
+                  </div>
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={billDiscountValue === 0 && !billDiscountManual ? '' : billDiscountValue}
+                    onChange={(e) => {
+                      setBillDiscountValue(Math.max(0, parseFloat(e.target.value) || 0));
+                      setBillDiscountManual(true);
+                    }}
+                    className="w-16 h-7 bg-white border border-amber-300 rounded-lg text-center font-mono font-bold text-xs text-slate-900 focus:outline-none focus:ring-1 focus:ring-amber-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+              </div>
+              {(totalItemDiscounts > 0 || billDiscountAmount > 0) && (
+                <div className="pt-1.5 border-t border-amber-200/60 flex items-center justify-between text-[11px] text-amber-900">
+                  <span>
+                    {totalItemDiscounts > 0 ? `Item Disc: -${formatMoney(totalItemDiscounts)} | ` : ''}
+                    Bill Disc: -{formatMoney(billDiscountAmount)}
+                  </span>
+                  <span className="font-mono font-bold text-amber-700">
+                    Total Disc: -{formatMoney(totalDiscountAmount)}
+                  </span>
+                </div>
+              )}
+            </div>
 
             {/* Final Total Card */}
             <div className="p-3.5 bg-slate-900 text-white rounded-xl flex items-center justify-between">

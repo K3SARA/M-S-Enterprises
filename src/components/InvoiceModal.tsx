@@ -353,6 +353,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                           </span>
                           <span className="font-bold">{formatMoney(item.lineTotal)}</span>
                         </div>
+                        {item.discountAmount !== undefined && item.discountAmount > 0 && (
+                          <div className="pl-1 text-[9px] text-black">
+                            &gt;&gt; ITEM DISC{item.discountPercent ? ` (${item.discountPercent}%)` : ''}: -{formatMoney(item.discountAmount)}
+                          </div>
+                        )}
                         {item.freeQuantity > 0 && (
                           <div className="pl-1 font-bold text-[9px] text-black">
                             &gt;&gt; FREE PROMO: +{item.freeQuantity} {item.product?.unit || 'pcs'} (Rs. 0.00)
@@ -664,7 +669,14 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                               </span>
                             )}
                           </td>
-                          <td className="p-2.5 text-right font-mono text-slate-600">{formatMoney(item.unitPrice)}</td>
+                          <td className="p-2.5 text-right font-mono text-slate-600">
+                            {formatMoney(item.unitPrice)}
+                            {item.discountAmount !== undefined && item.discountAmount > 0 && (
+                              <span className="block text-[10px] text-amber-600">
+                                -{formatMoney(item.discountAmount)} {item.discountPercent ? `(${item.discountPercent}%)` : ''}
+                              </span>
+                            )}
+                          </td>
                           <td className="p-2.5 pr-3 text-right font-bold text-slate-900 font-mono">
                             {formatMoney(item.lineTotal)}
                           </td>

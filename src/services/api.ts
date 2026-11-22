@@ -159,7 +159,7 @@ export const LorryService = {
   enterDriverBill: (id: string, payload: {
     paperBillNumber?: string;
     customerId: string;
-    items: { productId: string; quantity: number; freeQuantity?: number; unitPrice?: number }[];
+    items: { productId: string; quantity: number; freeQuantity?: number; unitPrice?: number; discountPercent?: number; discountAmount?: number }[];
     returnItems?: { productId: string; quantity: number; unitPrice?: number; returnType: 'DAMAGE' | 'RESALE'; reason?: string }[];
     paymentMethod: 'CASH' | 'CREDIT' | 'CHEQUE';
     cashReceived: number;
@@ -265,7 +265,7 @@ export const OrderService = {
     walkInName?: string;
     walkInPhone?: string;
     paperBillNumber?: string;
-    items: { productId: string; quantity: number; freeQuantity?: number; unitPrice?: number }[];
+    items: { productId: string; quantity: number; freeQuantity?: number; unitPrice?: number; discountPercent?: number; discountAmount?: number }[];
     returnItems?: { productId: string; quantity: number; unitPrice?: number; returnType: 'DAMAGE' | 'RESALE'; reason?: string }[];
     paymentStatus?: string;
     paymentMethod?: string;

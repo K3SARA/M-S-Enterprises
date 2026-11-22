@@ -15,7 +15,8 @@ import {
   Camera,
   ShieldCheck,
   ShieldAlert,
-  Loader2
+  Loader2,
+  Tag
 } from 'lucide-react';
 import { Lorry, Customer, Order, Product, ReturnableProduct } from '../types';
 import { LorryService, CustomerService, OrderService, ProductService } from '../services/api';
@@ -29,6 +30,9 @@ interface BillItemRow {
   productId: string;
   quantity: number;
   freeQuantity: number;
+  discountType?: '%' | 'Rs';
+  discountPercent?: number;
+  discountAmount?: number;
 }
 
 interface BillReturnRow {
@@ -69,6 +73,11 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const [bankName, setBankName] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [notes, setNotes] = useState<string>('');
+
+  // Bill-wise discount
+  const [billDiscountType, setBillDiscountType] = useState<'%' | 'Rs'>('%');
+  const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
+  const [billDiscountManual, setBillDiscountManual] = useState<boolean>(false);
 
   // Customer Unpaid Bills (for Bill-to-Bill clearance / knock-off)
   const [customerUnpaidBills, setCustomerUnpaidBills] = useState<Order[]>([]);
@@ -187,6 +196,9 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     setSelectedCustomerId(billMode === 'WALK_IN' ? 'walk-in' : '');
     setCashReceived('');
     setNotes('');
+    setBillDiscountType('%');
+    setBillDiscountValue(0);
+    setBillDiscountManual(false);
     setHasDraft(false);
   };
 
@@ -418,7 +430,45 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     return true;
   };
 
+  // Auto-sync customer discount to bill discount when customer changes (unless manually overridden)
+  useEffect(() => {
+    if (selectedCustomer && !billDiscountManual) {
+      setBillDiscountType('%');
+      setBillDiscountValue(selectedCustomer.discountPercentage || 0);
+    }
+  }, [selectedCustomerId, selectedCustomer, billDiscountManual]);
+
+  const updateItemDiscountType = (index: number, type: '%' | 'Rs') => {
+    const updated = [...billItems];
+    updated[index] = { ...updated[index], discountType: type };
+    setBillItems(updated);
+  };
+
+  const updateItemDiscountValue = (index: number, val: number) => {
+    const updated = [...billItems];
+    const row = { ...updated[index] };
+    if (row.discountType === 'Rs') {
+      row.discountAmount = val;
+    } else {
+      row.discountPercent = val;
+    }
+    updated[index] = row;
+    setBillItems(updated);
+  };
+
   // Calculate bill totals
+  const calculateItemDiscount = (item: BillItemRow) => {
+    const itemInfo = availableItems.find(s => s.productId === item.productId);
+    const price = itemInfo ? itemInfo.unitPrice : 0;
+    const itemGross = price * (item.quantity || 0);
+    if (itemGross <= 0) return 0;
+    if (item.discountType === 'Rs') {
+      return Math.min(itemGross, item.discountAmount || 0);
+    }
+    const pct = Math.min(100, Math.max(0, item.discountPercent || 0));
+    return (itemGross * pct) / 100;
+  };
+
   const calculateSubtotal = () => {
     return billItems.reduce((acc, item) => {
       const itemInfo = availableItems.find(s => s.productId === item.productId);
@@ -436,11 +486,21 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     }, 0);
   };
 
+  const totalItemDiscounts = billItems.reduce((acc, item) => acc + calculateItemDiscount(item), 0);
   const subtotal = calculateSubtotal();
   const returnAmount = calculateReturnAmount();
-  const discountPercent = selectedCustomer?.discountPercentage || 0;
-  const discountAmount = (subtotal * discountPercent) / 100;
-  const netTotal = Math.max(0, subtotal - discountAmount - returnAmount);
+  const subtotalAfterItemDiscounts = Math.max(0, subtotal - totalItemDiscounts);
+
+  const billDiscountAmount = billDiscountType === 'Rs'
+    ? Math.min(subtotalAfterItemDiscounts, billDiscountValue || 0)
+    : (subtotalAfterItemDiscounts * Math.min(100, Math.max(0, billDiscountValue || 0))) / 100;
+
+  const billDiscountPercentage = billDiscountType === '%'
+    ? (billDiscountValue || 0)
+    : (subtotalAfterItemDiscounts > 0 ? (billDiscountAmount / subtotalAfterItemDiscounts) * 100 : 0);
+
+  const totalDiscountAmount = totalItemDiscounts + billDiscountAmount;
+  const netTotal = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
   const totalBilledUnits = billItems.reduce((acc, item) => acc + (item.quantity || 0), 0);
   const totalFreeUnits = billItems.reduce((acc, item) => acc + (item.freeQuantity || 0), 0);
   const totalReturnUnits = returnItems.reduce((acc, ret) => acc + (ret.productId && ret.quantity > 0 ? ret.quantity : 0), 0);
@@ -526,18 +586,39 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         reason: r.reason
       }));
 
+      const formattedItemsPayload = validItems.map(i => {
+        const itemInfo = availableItems.find(s => s.productId === i.productId);
+        const price = itemInfo ? itemInfo.unitPrice : 0;
+        const itemGross = price * (i.quantity || 0);
+        let itemDiscAmount = 0;
+        let itemDiscPercent = 0;
+        if (i.discountType === 'Rs') {
+          itemDiscAmount = Math.min(itemGross, i.discountAmount || 0);
+          itemDiscPercent = itemGross > 0 ? (itemDiscAmount / itemGross) * 100 : 0;
+        } else {
+          itemDiscPercent = Math.min(100, Math.max(0, i.discountPercent || 0));
+          itemDiscAmount = (itemGross * itemDiscPercent) / 100;
+        }
+        return {
+          productId: i.productId,
+          quantity: i.quantity,
+          freeQuantity: i.freeQuantity || 0,
+          unitPrice: price,
+          discountPercent: itemDiscPercent,
+          discountAmount: itemDiscAmount
+        };
+      });
+
       if (billMode === 'LORRY') {
         const createdOrder = await LorryService.enterDriverBill(selectedLorryId, {
           paperBillNumber: paperBillNumber.trim() || undefined,
           customerId: selectedCustomerId,
-          items: validItems.map(i => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            freeQuantity: i.freeQuantity || 0
-          })),
+          items: formattedItemsPayload,
           returnItems: formattedReturnsPayload.length > 0 ? formattedReturnsPayload : undefined,
           paymentMethod,
           cashReceived: parsedCash,
+          discountAmount: billDiscountAmount,
+          discountPercentage: billDiscountPercentage,
           chequeNumber: paymentMethod === 'CHEQUE' ? chequeNumber.trim() : undefined,
           bankName: paymentMethod === 'CHEQUE' ? (bankName.trim() || undefined) : undefined,
           chequeDate: paymentMethod === 'CHEQUE' ? (chequeDate || undefined) : undefined,
@@ -558,14 +639,12 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           walkInName: walkInName.trim() || undefined,
           walkInPhone: walkInPhone.trim() || undefined,
           paperBillNumber: paperBillNumber.trim() || undefined,
-          items: validItems.map(i => ({
-            productId: i.productId,
-            quantity: i.quantity,
-            freeQuantity: i.freeQuantity || 0
-          })),
+          items: formattedItemsPayload,
           returnItems: formattedReturnsPayload.length > 0 ? formattedReturnsPayload : undefined,
           paymentMethod,
           cashReceived: parsedCash,
+          discountAmount: billDiscountAmount,
+          discountPercentage: billDiscountPercentage,
           chequeNumber: paymentMethod === 'CHEQUE' ? chequeNumber.trim() : undefined,
           bankName: paymentMethod === 'CHEQUE' ? (bankName.trim() || undefined) : undefined,
           chequeDate: paymentMethod === 'CHEQUE' ? (chequeDate || undefined) : undefined,
@@ -996,7 +1075,9 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                 billItems.map((item, index) => {
                   const itemInfo = availableItems.find(s => s.productId === item.productId);
                   const price = itemInfo ? itemInfo.unitPrice : 0;
-                  const lineTotal = price * (item.quantity || 0);
+                  const itemGross = price * (item.quantity || 0);
+                  const itemDiscount = calculateItemDiscount(item);
+                  const lineTotal = Math.max(0, itemGross - itemDiscount);
                   const hasScheme = Boolean(itemInfo && (itemInfo.freeRatioBuy ?? 0) > 0 && (itemInfo.freeRatioGet ?? 0) > 0);
 
                   return (
@@ -1029,10 +1110,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                         </select>
                       </div>
 
-                      {/* Quantity Controls Grid */}
-                      <div className="flex items-center gap-2.5 shrink-0">
+                      {/* Quantity & Discount Controls Grid */}
+                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
                         {/* Paid Qty */}
-                        <div className="w-24">
+                        <div className="w-20 sm:w-22">
                           <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-center mb-1">
                             Paid Qty
                           </label>
@@ -1045,12 +1126,12 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                             placeholder="Paid Qty"
                             title="Billed / Paid Quantity"
                             required
-                            className="w-full bg-white border border-slate-300 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center shadow-2xs"
+                            className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center shadow-2xs"
                           />
                         </div>
 
                         {/* Free Issue Qty */}
-                        <div className="w-24 relative">
+                        <div className="w-20 sm:w-22 relative">
                           <label className="block text-[9px] font-bold text-emerald-800 uppercase tracking-wider text-center mb-1">
                             Free Qty
                           </label>
@@ -1071,18 +1152,52 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                           ) : null}
                         </div>
 
-                        {/* Line Total */}
-                        <div className="w-28 text-right pr-1">
-                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-right mb-1">
-                            Line Total
+                        {/* Item Discount */}
+                        <div className="w-28 sm:w-32">
+                          <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-wider text-center mb-1">
+                            Item Disc
                           </label>
-                          <div className="font-mono text-xs font-bold text-slate-900 py-2">
-                            {formatMoney(lineTotal)}
+                          <div className="flex items-center bg-white border border-slate-300 rounded-xl p-0.5 shadow-2xs focus-within:ring-2 focus-within:ring-amber-400">
+                            <button
+                              type="button"
+                              onClick={() => updateItemDiscountType(index, item.discountType === 'Rs' ? '%' : 'Rs')}
+                              className={`px-1.5 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${
+                                item.discountType === 'Rs'
+                                  ? 'bg-amber-500 text-white shadow-2xs'
+                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                              title="Toggle percentage (%) or flat amount (Rs)"
+                            >
+                              {item.discountType === 'Rs' ? 'Rs' : '%'}
+                            </button>
+                            <input
+                              type="number"
+                              min="0"
+                              placeholder="0"
+                              value={item.discountType === 'Rs' ? (item.discountAmount ?? '') : (item.discountPercent ?? '')}
+                              onChange={(e) => updateItemDiscountValue(index, parseFloat(e.target.value) || 0)}
+                              className="w-full bg-transparent px-1 py-1 text-xs font-bold text-slate-900 focus:outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                            />
                           </div>
                         </div>
 
+                        {/* Line Total */}
+                        <div className="w-24 sm:w-28 text-right pr-1">
+                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-right mb-1">
+                            Line Total
+                          </label>
+                          <div className="font-mono text-xs font-bold text-slate-900 py-1">
+                            {formatMoney(lineTotal)}
+                          </div>
+                          {itemDiscount > 0 && (
+                            <div className="text-[10px] font-mono font-semibold text-amber-600">
+                              -{formatMoney(itemDiscount)}
+                            </div>
+                          )}
+                        </div>
+
                         {/* Delete */}
-                        <div className="pt-4">
+                        <div className="pt-3 sm:pt-4">
                           <button
                             type="button"
                             onClick={() => removeItemRow(index)}
@@ -1434,6 +1549,79 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
               </div>
             </div>
 
+            {/* Total Bill Discount Control Card */}
+            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-amber-50/70 to-orange-50/50 border border-amber-200/80 rounded-2xl shadow-2xs">
+              <div className="flex items-center gap-2.5">
+                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0">
+                  <Tag className="w-4 h-4 text-amber-600" />
+                </div>
+                <div>
+                  <div className="flex items-center gap-2">
+                    <span className="text-xs font-bold text-slate-900">Total Bill Discount</span>
+                    {selectedCustomer?.discountPercentage && selectedCustomer.discountPercentage > 0 && !billDiscountManual && (
+                      <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                        Customer Default {selectedCustomer.discountPercentage}%
+                      </span>
+                    )}
+                  </div>
+                  <span className="text-[11px] text-slate-500">Apply overall percentage or flat rupee discount to this invoice</span>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+                <div className="inline-flex rounded-xl bg-white border border-amber-300 p-0.5 shadow-2xs">
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBillDiscountType('%');
+                      setBillDiscountManual(true);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      billDiscountType === '%'
+                        ? 'bg-amber-500 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    %
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      setBillDiscountType('Rs');
+                      setBillDiscountManual(true);
+                    }}
+                    className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
+                      billDiscountType === 'Rs'
+                        ? 'bg-amber-500 text-white shadow-2xs'
+                        : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                  >
+                    Rs
+                  </button>
+                </div>
+
+                <div className="relative">
+                  <input
+                    type="number"
+                    min="0"
+                    placeholder="0"
+                    value={billDiscountValue === 0 && !billDiscountManual ? '' : billDiscountValue}
+                    onChange={(e) => {
+                      setBillDiscountValue(Math.max(0, parseFloat(e.target.value) || 0));
+                      setBillDiscountManual(true);
+                    }}
+                    className="w-20 bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs font-bold font-mono text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                  />
+                </div>
+
+                {billDiscountAmount > 0 && (
+                  <span className="font-mono text-xs font-bold text-amber-700 bg-amber-100/80 px-2 py-1 rounded-lg">
+                    -{formatMoney(billDiscountAmount)}
+                  </span>
+                )}
+              </div>
+            </div>
+
             {/* Calculations & Submit */}
             <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs">
               <div className="flex flex-wrap items-center gap-4 sm:gap-6">
@@ -1454,13 +1642,23 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                     {formatMoney(subtotal)}
                   </span>
                 </div>
-                {discountAmount > 0 && (
+                {totalItemDiscounts > 0 && (
                   <div>
                     <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                      Customer Discount ({discountPercent}%)
+                      Item Discounts
+                    </span>
+                    <span className="text-sm font-mono font-semibold text-amber-600">
+                      -{formatMoney(totalItemDiscounts)}
+                    </span>
+                  </div>
+                )}
+                {billDiscountAmount > 0 && (
+                  <div>
+                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                      Bill Discount ({billDiscountPercentage.toFixed(1)}%)
                     </span>
                     <span className="text-sm font-mono font-semibold text-emerald-600">
-                      -{formatMoney(discountAmount)}
+                      -{formatMoney(billDiscountAmount)}
                     </span>
                   </div>
                 )}

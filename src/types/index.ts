@@ -248,6 +248,8 @@ export interface OrderItem {
   quantity: number;
   freeQuantity: number;
   unitPrice: number;
+  discountPercent?: number;
+  discountAmount?: number;
   lineTotal: number;
 }
 
@@ -299,6 +301,7 @@ export interface Order {
   bankName?: string | null;
   chequeDate?: string | null;
   subtotal: number;
+  discountPercentage?: number;
   discountAmount: number;
   taxAmount: number;
   returnAmount?: number;

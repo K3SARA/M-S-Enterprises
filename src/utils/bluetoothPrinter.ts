@@ -238,6 +238,12 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
     const lineTot = `Rs.${item.lineTotal.toFixed(2)}`;
     addLine(padTwoColumns(qtyPrice, lineTot));
 
+    // Item Discount line
+    if (item.discountAmount && item.discountAmount > 0) {
+      const discPercentStr = item.discountPercent && item.discountPercent > 0 ? ` (${item.discountPercent.toFixed(1)}%)` : '';
+      addLine(`  >> ITEM DISC${discPercentStr}: -Rs.${item.discountAmount.toFixed(2)}`);
+    }
+
     // Promotional Free Issue line
     if (item.freeQuantity && item.freeQuantity > 0) {
       totalFreeQty += item.freeQuantity;

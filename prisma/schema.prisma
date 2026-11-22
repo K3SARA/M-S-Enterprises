@@ -244,9 +244,10 @@ model Order {
   paymentStatus   String   @default("PAID") // UNPAID, PARTIAL, PAID
   paymentMethod   String   @default("CASH") // CASH, CREDIT, CHEQUE
 
-  subtotal       Float
-  discountAmount Float @default(0.0)
-  taxAmount      Float @default(0.0)
+  subtotal           Float
+  discountPercentage Float @default(0.0)
+  discountAmount     Float @default(0.0)
+  taxAmount          Float @default(0.0)
   returnAmount   Float @default(0.0) // Value of returned/damaged goods deducted from bill
   appliedCreditAmount Float @default(0.0) // Prior return credit balance deducted from this bill
   isExchangeOrder     Boolean @default(false) // True if order was an immediate item-for-item exchange
@@ -275,15 +276,17 @@ model Order {
 }
 
 model OrderItem {
-  id           String  @id @default(uuid())
-  orderId      String
-  order        Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
-  productId    String
-  product      Product @relation(fields: [productId], references: [id])
-  quantity     Int // Billed / Paid quantity
-  freeQuantity Int     @default(0) // Free issues given on promotion
-  unitPrice    Float
-  lineTotal    Float
+  id              String  @id @default(uuid())
+  orderId         String
+  order           Order   @relation(fields: [orderId], references: [id], onDelete: Cascade)
+  productId       String
+  product         Product @relation(fields: [productId], references: [id])
+  quantity        Int // Billed / Paid quantity
+  freeQuantity    Int     @default(0) // Free issues given on promotion
+  unitPrice       Float
+  discountPercent Float   @default(0.0) // Item discount percentage
+  discountAmount  Float   @default(0.0) // Item discount amount
+  lineTotal       Float
 }
 
 model OrderReturn {

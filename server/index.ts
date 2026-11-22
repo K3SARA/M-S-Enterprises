@@ -4061,6 +4061,7 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
       });
 
       let subtotal = 0;
+      let totalItemDiscounts = 0;
       const orderItemsToCreate = [];
 
       // Validate Lorry floating inventory
@@ -4096,15 +4097,30 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           ? parseFloat(item.unitPrice)
           : product.unitPrice;
 
-        // Line total and invoice subtotal strictly reflect billed units; promotional free units cost Rs. 0.00
-        const lineTotal = itemUnitPrice * qty;
-        subtotal += lineTotal;
+        const itemDiscountPercent = item.discountPercent !== undefined && !isNaN(parseFloat(item.discountPercent)) && parseFloat(item.discountPercent) >= 0
+          ? parseFloat(item.discountPercent)
+          : 0;
+
+        let itemDiscountAmount = item.discountAmount !== undefined && !isNaN(parseFloat(item.discountAmount)) && parseFloat(item.discountAmount) >= 0
+          ? parseFloat(item.discountAmount)
+          : 0;
+
+        const rawItemGross = itemUnitPrice * qty;
+        if (itemDiscountPercent > 0 && itemDiscountAmount === 0) {
+          itemDiscountAmount = (rawItemGross * itemDiscountPercent) / 100;
+        }
+
+        const lineTotal = Math.max(0, rawItemGross - itemDiscountAmount);
+        subtotal += rawItemGross;
+        totalItemDiscounts += itemDiscountAmount;
 
         orderItemsToCreate.push({
           productId: product.id,
           quantity: qty,
           freeQuantity: freeQty,
           unitPrice: itemUnitPrice,
+          discountPercent: itemDiscountPercent,
+          discountAmount: itemDiscountAmount,
           lineTotal
         });
 
@@ -4223,21 +4239,28 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
       const reqDiscountAmount = req.body.discountAmount !== undefined ? parseFloat(req.body.discountAmount) : null;
       const reqDiscountPercent = req.body.discountPercentage !== undefined ? parseFloat(req.body.discountPercentage) : null;
 
-      let discountAmount = 0;
+      const subtotalAfterItemDiscounts = Math.max(0, subtotal - totalItemDiscounts);
+      let billDiscountAmount = 0;
+      let finalDiscountPercentage = 0;
+
       if (reqDiscountAmount !== null && !isNaN(reqDiscountAmount) && reqDiscountAmount >= 0) {
-        discountAmount = reqDiscountAmount;
+        billDiscountAmount = reqDiscountAmount;
+        finalDiscountPercentage = subtotalAfterItemDiscounts > 0 ? (billDiscountAmount / subtotalAfterItemDiscounts) * 100 : 0;
       } else if (reqDiscountPercent !== null && !isNaN(reqDiscountPercent) && reqDiscountPercent >= 0) {
-        discountAmount = (subtotal * reqDiscountPercent) / 100;
+        finalDiscountPercentage = reqDiscountPercent;
+        billDiscountAmount = (subtotalAfterItemDiscounts * reqDiscountPercent) / 100;
       } else {
-        const discountPercentage = customer.discountPercentage || 0;
-        discountAmount = (subtotal * discountPercentage) / 100;
+        finalDiscountPercentage = customer.discountPercentage || 0;
+        billDiscountAmount = (subtotalAfterItemDiscounts * finalDiscountPercentage) / 100;
       }
+
+      const totalDiscountAmount = totalItemDiscounts + billDiscountAmount;
 
       const reqAppliedCredit = req.body.appliedCreditAmount !== undefined ? parseFloat(req.body.appliedCreditAmount) : 0;
       const customerReturnCredit = customer.returnCreditBalance || 0;
       const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
 
-      const netBeforeCredit = Math.max(0, subtotal - discountAmount - returnAmount);
+      const netBeforeCredit = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
       const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
 
       const isCheque = paymentMethod === 'CHEQUE';
@@ -4323,7 +4346,8 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           bankName: isCheque ? (bankName?.trim() || null) : null,
           chequeDate: isCheque && chequeDate ? new Date(chequeDate) : (isCheque ? new Date() : null),
           subtotal,
-          discountAmount,
+          discountPercentage: finalDiscountPercentage,
+          discountAmount: totalDiscountAmount,
           taxAmount: 0.0,
           returnAmount,
           appliedCreditAmount,
@@ -4398,7 +4422,7 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         });
       }
 
-      const billGross = Math.max(0, subtotal - discountAmount);
+      const billGross = Math.max(0, subtotal - totalDiscountAmount);
       const surplusReturnCredit = Math.max(0, returnAmount - billGross);
       if (surplusReturnCredit > 0) {
         await tx.customer.update({
@@ -6189,6 +6213,7 @@ app.post('/api/orders', async (req: Request, res: Response) => {
       }
 
       let subtotal = 0;
+      let totalItemDiscounts = 0;
       let totalBilledUnits = 0;
       let totalFreeUnits = 0;
       const orderItemsToCreate = [];
@@ -6215,9 +6240,22 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           ? parseFloat(item.unitPrice)
           : product.unitPrice;
 
-        // Line total and invoice subtotal strictly reflect billed units; promotional free units cost Rs. 0.00
-        const lineTotal = itemUnitPrice * qty;
-        subtotal += lineTotal;
+        const itemDiscountPercent = item.discountPercent !== undefined && !isNaN(parseFloat(item.discountPercent)) && parseFloat(item.discountPercent) >= 0
+          ? parseFloat(item.discountPercent)
+          : 0;
+
+        let itemDiscountAmount = item.discountAmount !== undefined && !isNaN(parseFloat(item.discountAmount)) && parseFloat(item.discountAmount) >= 0
+          ? parseFloat(item.discountAmount)
+          : 0;
+
+        const rawItemGross = itemUnitPrice * qty;
+        if (itemDiscountPercent > 0 && itemDiscountAmount === 0) {
+          itemDiscountAmount = (rawItemGross * itemDiscountPercent) / 100;
+        }
+
+        const lineTotal = Math.max(0, rawItemGross - itemDiscountAmount);
+        subtotal += rawItemGross;
+        totalItemDiscounts += itemDiscountAmount;
         totalBilledUnits += qty;
         totalFreeUnits += freeQty;
 
@@ -6226,6 +6264,8 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           quantity: qty,
           freeQuantity: freeQty,
           unitPrice: itemUnitPrice,
+          discountPercent: itemDiscountPercent,
+          discountAmount: itemDiscountAmount,
           lineTotal
         });
 
@@ -6351,21 +6391,28 @@ app.post('/api/orders', async (req: Request, res: Response) => {
       const reqDiscountAmount = req.body.discountAmount !== undefined ? parseFloat(req.body.discountAmount) : null;
       const reqDiscountPercent = req.body.discountPercentage !== undefined ? parseFloat(req.body.discountPercentage) : null;
 
-      let discountAmount = 0;
+      const subtotalAfterItemDiscounts = Math.max(0, subtotal - totalItemDiscounts);
+      let billDiscountAmount = 0;
+      let finalDiscountPercentage = 0;
+
       if (reqDiscountAmount !== null && !isNaN(reqDiscountAmount) && reqDiscountAmount >= 0) {
-        discountAmount = reqDiscountAmount;
+        billDiscountAmount = reqDiscountAmount;
+        finalDiscountPercentage = subtotalAfterItemDiscounts > 0 ? (billDiscountAmount / subtotalAfterItemDiscounts) * 100 : 0;
       } else if (reqDiscountPercent !== null && !isNaN(reqDiscountPercent) && reqDiscountPercent >= 0) {
-        discountAmount = (subtotal * reqDiscountPercent) / 100;
+        finalDiscountPercentage = reqDiscountPercent;
+        billDiscountAmount = (subtotalAfterItemDiscounts * reqDiscountPercent) / 100;
       } else {
-        const discountPercentage = customer.discountPercentage || 0;
-        discountAmount = (subtotal * discountPercentage) / 100;
+        finalDiscountPercentage = customer.discountPercentage || 0;
+        billDiscountAmount = (subtotalAfterItemDiscounts * finalDiscountPercentage) / 100;
       }
+
+      const totalDiscountAmount = totalItemDiscounts + billDiscountAmount;
 
       const reqAppliedCredit = req.body.appliedCreditAmount !== undefined ? parseFloat(req.body.appliedCreditAmount) : 0;
       const customerReturnCredit = customer.returnCreditBalance || 0;
       const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
 
-      const netBeforeCredit = Math.max(0, subtotal - discountAmount - returnAmount);
+      const netBeforeCredit = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
       const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
 
       const isCheque = paymentMethod === 'CHEQUE';
@@ -6449,7 +6496,8 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           bankName: isCheque ? (bankName?.trim() || null) : null,
           chequeDate: isCheque && chequeDate ? new Date(chequeDate) : (isCheque ? new Date() : null),
           subtotal,
-          discountAmount,
+          discountPercentage: finalDiscountPercentage,
+          discountAmount: totalDiscountAmount,
           taxAmount: 0.0,
           returnAmount,
           appliedCreditAmount,
@@ -6532,7 +6580,7 @@ app.post('/api/orders', async (req: Request, res: Response) => {
         });
       }
 
-      const billGross2 = Math.max(0, subtotal - discountAmount);
+      const billGross2 = Math.max(0, subtotal - totalDiscountAmount);
       const surplusReturnCredit2 = Math.max(0, returnAmount - billGross2);
       if (surplusReturnCredit2 > 0 && customer.code !== 'WALK-IN') {
         await tx.customer.update({
