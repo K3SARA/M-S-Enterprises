@@ -29,6 +29,7 @@ import { Login } from './pages/Login';
 import { RepMobilePortal } from './pages/RepMobilePortal';
 import { SupplierPortal } from './pages/SupplierPortal';
 import { BankController } from './pages/BankController';
+import { PreOrders } from './pages/PreOrders';
 import { InvoiceModal } from './components/InvoiceModal';
 import { CurrencyProvider, useCurrency, CURRENCIES } from './context/CurrencyContext';
 import { Order, User } from './types';
@@ -135,6 +136,7 @@ export const AppContent: React.FC = () => {
               onNavigateToSettlement={() => setCurrentTab('lorry-settlement')}
               onNavigateToInventory={() => setCurrentTab('inventory')}
               onNavigateToExpenses={() => setCurrentTab('expenses')}
+              onNavigateToPreOrders={() => setCurrentTab('pre-orders')}
               onViewInvoice={(order) => setActiveInvoiceOrder(order)}
             />
           )}
@@ -167,6 +169,8 @@ export const AppContent: React.FC = () => {
           {currentTab === 'bill-entry' && (
             <BillEntry onViewInvoice={(order) => setActiveInvoiceOrder(order)} />
           )}
+
+          {currentTab === 'pre-orders' && <PreOrders />}
 
           {currentTab === 'rep-billing' && (
             <RepBilling

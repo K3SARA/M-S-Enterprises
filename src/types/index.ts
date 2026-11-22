@@ -266,6 +266,40 @@ export interface OrderReturn {
   createdAt?: string;
 }
 
+export interface PreOrderItem {
+  id: string;
+  preOrderId: string;
+  productId: string;
+  product: Product;
+  quantity: number;
+  unitPrice: number;
+  lineTotal: number;
+  createdAt: string;
+}
+
+export interface PreOrder {
+  id: string;
+  preOrderNumber: string;
+  customerId: string;
+  customer: Customer;
+  lorryId?: string | null;
+  lorry?: Lorry | null;
+  userId?: string | null;
+  status: 'PENDING' | 'FULFILLED' | 'CANCELLED';
+  source: 'REP' | 'OFFICE';
+  notes?: string | null;
+  fulfilledOrderId?: string | null;
+  fulfilledAt?: string | null;
+  createdAt: string;
+  updatedAt: string;
+  items: PreOrderItem[];
+  
+  // Computed helpers for UI
+  totalItemsCount?: number;
+  totalEstimatedValue?: number;
+  hasAvailableStock?: boolean;
+}
+
 export interface ReturnableProduct {
   productId: string;
   product: Product;

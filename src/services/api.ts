@@ -39,7 +39,9 @@ import {
   BankTransaction,
   BankSummary,
   LorryStockTransfer,
-  LorryStockTransferItem
+  LorryStockTransferItem,
+  PreOrder,
+  PreOrderItem
 } from '../types';
 
 import { Capacitor } from '@capacitor/core';
@@ -177,6 +179,7 @@ export const LorryService = {
     latitude?: number;
     longitude?: number;
     adminOverridePasscode?: string;
+    fulfilledPreOrderIds?: string[];
   }) => api.post<Order>(`/lorries/${id}/bills`, payload).then(r => r.data),
   settleLorry: (id: string, payload: {
     loadingId: string;
@@ -283,6 +286,7 @@ export const OrderService = {
     lorryId?: string;
     settlePreviousBills?: { orderId: string; amount: number; paymentMethod?: string }[];
     adminOverridePasscode?: string;
+    fulfilledPreOrderIds?: string[];
   }) => api.post<Order>('/orders', payload).then(r => r.data),
   updateStatus: (id: string, status: string) =>
     api.patch<Order>(`/orders/${id}/status`, { status }).then(r => r.data)
@@ -790,4 +794,23 @@ export const LorryTransferService = {
     exchangeItems?: { productId: string; quantity: number; freeQuantity?: number }[];
     notes?: string;
   }) => api.post<{ success: boolean; transferNumber: string }>('/lorries/transfer-stock', payload).then(r => r.data)
+};
+
+export const PreOrderService = {
+  getAll: (params?: { status?: string; customerId?: string; search?: string; routeId?: string }) =>
+    api.get<PreOrder[]>('/pre-orders', { params }).then(r => r.data),
+  getByCustomer: (customerId: string, status?: string) =>
+    api.get<PreOrder[]>(`/customers/${customerId}/pre-orders`, { params: { status } }).then(r => r.data),
+  create: (payload: {
+    customerId: string;
+    lorryId?: string;
+    userId?: string;
+    source?: 'REP' | 'OFFICE';
+    notes?: string;
+    items: { productId: string; quantity: number; unitPrice?: number }[];
+  }) => api.post<PreOrder>('/pre-orders', payload).then(r => r.data),
+  fulfill: (id: string, payload?: { orderId?: string }) =>
+    api.post<PreOrder>(`/pre-orders/${id}/fulfill`, payload).then(r => r.data),
+  cancel: (id: string, reason?: string) =>
+    api.patch<PreOrder>(`/pre-orders/${id}/cancel`, { reason }).then(r => r.data),
 };

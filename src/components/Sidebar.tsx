@@ -21,6 +21,7 @@ import {
   LogOut,
   MapPin,
   Landmark,
+  Clock,
   X
 } from 'lucide-react';
 import { useCurrency, CURRENCIES, CurrencyCode } from '../context/CurrencyContext';
@@ -72,6 +73,7 @@ export const Sidebar: React.FC<SidebarProps> = ({
         { id: 'manufacturing', label: 'Manufacturing & BOM', icon: Factory, badge: 'Production', badgeTone: 'inward' },
         { id: 'lorry-loading', label: 'Morning Lorry Load', icon: Truck, badge: 'Step 2', badgeTone: 'step' },
         { id: 'bill-entry', label: 'Office Bill Entry', icon: Receipt, badge: 'Step 3', badgeTone: 'step' },
+        { id: 'pre-orders', label: 'Pre-Orders & Bookings', icon: Clock, badge: 'Bookings', badgeTone: 'pnl' },
         { id: 'lorry-settlement', label: 'Day Settlement', icon: RotateCcw, badge: 'Step 4', badgeTone: 'step' }
       ]
     },

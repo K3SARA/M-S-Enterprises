@@ -62,9 +62,10 @@ import {
   RepTargetProgress,
   RouteOptimizationResult,
   OptimizedStop,
-  RouteStatusResult
+  RouteStatusResult,
+  PreOrder
 } from '../types';
-import { CustomerService, LorryService, ProductService, OrderService, AuthService, MapService, RouteService } from '../services/api';
+import { CustomerService, LorryService, ProductService, OrderService, AuthService, MapService, RouteService, PreOrderService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { CustomerModal } from '../components/CustomerModal';
 import { RepBillsSummaryModal } from '../components/RepBillsSummaryModal';
@@ -177,6 +178,15 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [showDirectCollectionModal, setShowDirectCollectionModal] = useState<boolean>(false);
   const [showDirectReturnsModal, setShowDirectReturnsModal] = useState<boolean>(false);
   const [activeReceiptPayment, setActiveReceiptPayment] = useState<CustomerPayment | null>(null);
+
+  // Pre-Orders & Advance Bookings State
+  const [customerPreOrders, setCustomerPreOrders] = useState<PreOrder[]>([]);
+  const [fulfilledPreOrderIds, setFulfilledPreOrderIds] = useState<string[]>([]);
+  const [showPreOrderModal, setShowPreOrderModal] = useState<boolean>(false);
+  const [preOrderProductId, setPreOrderProductId] = useState<string>('');
+  const [preOrderQty, setPreOrderQty] = useState<number>(1);
+  const [preOrderNotes, setPreOrderNotes] = useState<string>('');
+  const [submittingPreOrder, setSubmittingPreOrder] = useState<boolean>(false);
 
   // Finished Bills State & Filters
   type BillsDatePreset = 'today' | 'yesterday' | 'thisWeek' | 'thisMonth' | 'all' | 'custom';
@@ -952,7 +962,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     return customers.find(c => c.id === selectedCustomerId) || null;
   }, [customers, selectedCustomerId]);
 
-  // When customer changes, fetch unpaid bills
+  // When customer changes, fetch unpaid bills and pending pre-orders
   useEffect(() => {
     if (selectedCustomerId) {
       CustomerService.getUnpaidBills(selectedCustomerId)
@@ -977,12 +987,93 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           setCollectPrevBill(false);
         });
 
-      const cust = customers.find(c => c.id === selectedCustomerId);
-      if (cust && cust.creditLimit && cust.creditLimit > 0) {
-        // Ready
-      }
+      // Fetch pending pre-orders for this customer
+      PreOrderService.getByCustomer(selectedCustomerId, 'PENDING')
+        .then(pos => setCustomerPreOrders(Array.isArray(pos) ? pos : []))
+        .catch(() => setCustomerPreOrders([]));
+    } else {
+      setCustomerUnpaidBills([]);
+      setCustomerPreOrders([]);
+      setFulfilledPreOrderIds([]);
     }
   }, [selectedCustomerId]);
+
+  const handleAddPreOrderToCart = (preOrderId: string, item: any) => {
+    const prod = products.find(p => p.id === item.productId) || item.product;
+    if (!prod) return;
+    const stockInfo = lorryStockMap.get(item.productId);
+    const availableLorryStock = stockInfo?.stock || 0;
+    if (availableLorryStock <= 0) {
+      alert(`Cannot add ${prod.name} to bill: 0 floating stock currently available on this lorry.`);
+      return;
+    }
+    const qtyToAdd = Math.min(item.quantity, availableLorryStock);
+    
+    // Add to cart
+    setCart(prev => {
+      const existing = prev.find(c => c.productId === prod.id);
+      if (existing) {
+        return prev.map(c => c.productId === prod.id ? { ...c, quantity: Math.min(c.quantity + qtyToAdd, availableLorryStock) } : c);
+      }
+      return [
+        ...prev,
+        {
+          productId: prod.id,
+          sku: prod.sku,
+          name: prod.name,
+          category: prod.category || 'General',
+          unit: prod.unit || 'Unit',
+          unitPrice: prod.unitPrice,
+          originalUnitPrice: prod.unitPrice,
+          availableStock: availableLorryStock,
+          quantity: qtyToAdd,
+          freeQuantity: 0
+        }
+      ];
+    });
+
+    if (!fulfilledPreOrderIds.includes(preOrderId)) {
+      setFulfilledPreOrderIds(prev => [...prev, preOrderId]);
+    }
+    setAutoCheckinToast(`✓ Added ${prod.name} (×${qtyToAdd}) from Pre-Order to bill`);
+    setTimeout(() => setAutoCheckinToast(null), 3500);
+  };
+
+  const handleCreatePreOrder = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!selectedCustomerId) {
+      setErrorMessage('Please select a customer first to take a pre-order.');
+      return;
+    }
+    if (!preOrderProductId) {
+      setErrorMessage('Please select a product to pre-order.');
+      return;
+    }
+    try {
+      setSubmittingPreOrder(true);
+      await PreOrderService.create({
+        customerId: selectedCustomerId,
+        lorryId: selectedLorryId || undefined,
+        userId: user?.id,
+        source: 'REP',
+        notes: preOrderNotes.trim() || undefined,
+        items: [{ productId: preOrderProductId, quantity: preOrderQty }]
+      });
+      setShowPreOrderModal(false);
+      setPreOrderProductId('');
+      setPreOrderQty(1);
+      setPreOrderNotes('');
+      setAutoCheckinToast('✓ Pre-order recorded! Will prompt on next store visit.');
+      setTimeout(() => setAutoCheckinToast(null), 4000);
+
+      const pos = await PreOrderService.getByCustomer(selectedCustomerId, 'PENDING');
+      setCustomerPreOrders(Array.isArray(pos) ? pos : []);
+    } catch (err: any) {
+      setErrorMessage(err.response?.data?.error || err.message || 'Error recording pre-order');
+    } finally {
+      setSubmittingPreOrder(false);
+    }
+  };
 
   // Filtered customers
   const filteredCustomers = useMemo(() => {
@@ -1576,7 +1667,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         settlePreviousBills: previousBillsPayload,
         latitude: currentGpsCoords?.lat,
         longitude: currentGpsCoords?.lng,
-        adminOverridePasscode: adminOverridePasscode || undefined
+        adminOverridePasscode: adminOverridePasscode || undefined,
+        fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined
       };
 
       if (paymentMethod === 'CHEQUE') {
@@ -2638,29 +2730,109 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 )}
 
                 {/* Direct Actions on Selected Customer */}
-                <div className="grid grid-cols-2 gap-2 pt-1 border-t border-slate-100">
+                <div className="grid grid-cols-3 gap-1.5 pt-1 border-t border-slate-100">
                   <button
                     type="button"
                     onClick={() => setShowDirectCollectionModal(true)}
-                    className="py-2 px-2.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 active:scale-95 text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-emerald-200/80 transition cursor-pointer"
+                    className="py-2 px-1.5 rounded-xl bg-emerald-50 hover:bg-emerald-100/80 active:scale-95 text-emerald-800 text-[11px] font-bold flex items-center justify-center gap-1 border border-emerald-200/80 transition cursor-pointer"
                   >
                     <Wallet className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
-                    <span className="truncate">Collect Due</span>
-                    {selectedCustomer.outstandingBalance > 0 && (
-                      <span className="text-[10px] font-mono text-emerald-700 bg-emerald-200/60 px-1 py-0.2 rounded font-semibold shrink-0">
-                        {formatMoney(selectedCustomer.outstandingBalance)}
-                      </span>
-                    )}
+                    <span className="truncate">Collect</span>
                   </button>
                   <button
                     type="button"
                     onClick={() => setShowDirectReturnsModal(true)}
-                    className="py-2 px-2.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 active:scale-95 text-amber-800 text-[11px] font-bold flex items-center justify-center gap-1.5 border border-amber-200/80 transition cursor-pointer"
+                    className="py-2 px-1.5 rounded-xl bg-amber-50 hover:bg-amber-100/80 active:scale-95 text-amber-800 text-[11px] font-bold flex items-center justify-center gap-1 border border-amber-200/80 transition cursor-pointer"
                   >
                     <RotateCcw className="w-3.5 h-3.5 text-amber-600 shrink-0" />
-                    <span className="truncate">Direct Return</span>
+                    <span className="truncate">Return</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setShowPreOrderModal(true)}
+                    className="py-2 px-1.5 rounded-xl bg-indigo-50 hover:bg-indigo-100/80 active:scale-95 text-indigo-800 text-[11px] font-bold flex items-center justify-center gap-1 border border-indigo-200/80 transition cursor-pointer"
+                    title="Take an advance pre-order for an out-of-stock item"
+                  >
+                    <Clock className="w-3.5 h-3.5 text-indigo-600 shrink-0" />
+                    <span className="truncate">Pre-Order</span>
                   </button>
                 </div>
+
+                {/* Pending Pre-Orders Alert Card */}
+                {customerPreOrders.length > 0 && (
+                  <div className="p-3 bg-indigo-50/70 border border-indigo-200/80 rounded-2xl space-y-2 animate-fadeIn">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-1.5">
+                        <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                        <span className="text-xs font-bold text-indigo-950">
+                          Pending Pre-Orders ({customerPreOrders.length})
+                        </span>
+                      </div>
+                      <span className="text-[10px] font-semibold text-indigo-700 bg-indigo-100/70 px-2 py-0.5 rounded-full">
+                        Advance Bookings
+                      </span>
+                    </div>
+
+                    <div className="space-y-1.5">
+                      {customerPreOrders.map(po => (
+                        <div key={po.id} className="bg-white p-2.5 rounded-xl border border-indigo-100/90 shadow-2xs space-y-1">
+                          <div className="flex items-center justify-between text-[10.5px] text-slate-500 font-mono">
+                            <span className="font-bold text-slate-800">{po.preOrderNumber}</span>
+                            <span>{new Date(po.createdAt).toLocaleDateString()}</span>
+                          </div>
+                          <div className="divide-y divide-slate-100">
+                            {po.items.map(item => {
+                              const stockInfo = lorryStockMap.get(item.productId);
+                              const lorryStock = stockInfo?.stock || 0;
+                              const inStock = lorryStock > 0;
+                              const alreadyInCart = cart.some(c => c.productId === item.productId);
+
+                              return (
+                                <div key={item.id} className="pt-1.5 pb-0.5 flex items-center justify-between gap-2 text-xs">
+                                  <div className="min-w-0 flex-1">
+                                    <span className="font-semibold text-slate-800 block truncate text-xs">
+                                      {item.product?.name}
+                                    </span>
+                                    <div className="flex items-center gap-2 text-[10px] mt-0.5">
+                                      <span className="text-slate-500 font-mono">Ordered: {item.quantity} u</span>
+                                      <span>•</span>
+                                      {inStock ? (
+                                        <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200/60">
+                                          On Lorry: {lorryStock} u
+                                        </span>
+                                      ) : (
+                                        <span className="text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
+                                          0 on Lorry (Out of Stock)
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+
+                                  <div className="shrink-0">
+                                    {inStock && !alreadyInCart && (
+                                      <button
+                                        type="button"
+                                        onClick={() => handleAddPreOrderToCart(po.id, item)}
+                                        className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-1"
+                                      >
+                                        <Plus className="w-3 h-3" /> Add to Cart
+                                      </button>
+                                    )}
+                                    {alreadyInCart && (
+                                      <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                                        ✓ In Cart
+                                      </span>
+                                    )}
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
 
                 {/* Next Step Button */}
                 <button
@@ -5422,6 +5594,100 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           setTimeout(() => setStockPageToast(null), 3500);
         }}
       />
+
+      {/* TAKE PRE-ORDER MODAL (MOBILE REP PORTAL) */}
+      {showPreOrderModal && (
+        <div className="fixed inset-0 z-50 bg-slate-900/50 backdrop-blur-xs flex items-center justify-center p-4">
+          <div className="bg-white rounded-3xl border border-slate-200 shadow-2xl w-full max-w-md overflow-hidden animate-scaleUp">
+            <div className="p-4 border-b border-slate-100 flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
+                  <Clock className="w-4 h-4 text-indigo-600" />
+                  <span>Pre-Order: {selectedCustomer?.name || 'Customer'}</span>
+                </h3>
+                <p className="text-[11px] text-slate-400 mt-0.5">
+                  Book out-of-stock items for next route visit.
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowPreOrderModal(false)}
+                className="text-slate-400 hover:text-slate-600 p-1 rounded-xl"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <form onSubmit={handleCreatePreOrder} className="p-4 space-y-3.5">
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Product to Book <span className="text-rose-500">*</span>
+                </label>
+                <select
+                  value={preOrderProductId}
+                  onChange={e => setPreOrderProductId(e.target.value)}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                >
+                  <option value="">-- Choose Item from Catalog --</option>
+                  {products.map(p => {
+                    const lStock = lorryStockMap.get(p.id)?.stock || 0;
+                    return (
+                      <option key={p.id} value={p.id}>
+                        {p.name} {lStock <= 0 ? '(0 on Lorry - Out of Stock)' : `(${lStock} on Lorry)`}
+                      </option>
+                    );
+                  })}
+                </select>
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Requested Quantity <span className="text-rose-500">*</span>
+                </label>
+                <input
+                  type="number"
+                  min="1"
+                  value={preOrderQty}
+                  onChange={e => setPreOrderQty(parseInt(e.target.value, 10) || 1)}
+                  required
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-indigo-500 text-center"
+                />
+              </div>
+
+              <div>
+                <label className="text-[11px] font-bold text-slate-600 block mb-1">
+                  Customer Remarks / Target Date
+                </label>
+                <input
+                  type="text"
+                  value={preOrderNotes}
+                  onChange={e => setPreOrderNotes(e.target.value)}
+                  placeholder="e.g. Bring on next route run"
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-indigo-500"
+                />
+              </div>
+
+              <div className="pt-2 flex items-center justify-end gap-2 border-t border-slate-100">
+                <button
+                  type="button"
+                  onClick={() => setShowPreOrderModal(false)}
+                  className="px-3 py-2 text-xs font-semibold text-slate-600 hover:text-slate-800 cursor-pointer"
+                >
+                  Cancel
+                </button>
+                <button
+                  type="submit"
+                  disabled={submittingPreOrder}
+                  className="px-4 py-2 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition-all cursor-pointer disabled:opacity-50"
+                >
+                  {submittingPreOrder ? 'Saving...' : 'Confirm Pre-Order'}
+                </button>
+              </div>
+            </form>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

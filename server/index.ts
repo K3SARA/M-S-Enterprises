@@ -4779,6 +4779,22 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         console.warn('[Visit Verify] Note:', visitErr);
       }
 
+      // Auto-fulfill linked pre-orders if specified
+      if (Array.isArray(req.body.fulfilledPreOrderIds) && req.body.fulfilledPreOrderIds.length > 0) {
+        try {
+          await tx.preOrder.updateMany({
+            where: { id: { in: req.body.fulfilledPreOrderIds } },
+            data: {
+              status: 'FULFILLED',
+              fulfilledOrderId: newOrder.id,
+              fulfilledAt: new Date()
+            }
+          });
+        } catch (poErr) {
+          console.warn('[PreOrder Fulfill in Lorry Bill] Note:', poErr);
+        }
+      }
+
       return {
         ...newOrder,
         previousBillsSettled: settledReceipts,
@@ -6868,6 +6884,22 @@ app.post('/api/orders', async (req: Request, res: Response) => {
         }
       }
 
+      // Auto-fulfill linked pre-orders if specified
+      if (Array.isArray(req.body.fulfilledPreOrderIds) && req.body.fulfilledPreOrderIds.length > 0) {
+        try {
+          await tx.preOrder.updateMany({
+            where: { id: { in: req.body.fulfilledPreOrderIds } },
+            data: {
+              status: 'FULFILLED',
+              fulfilledOrderId: createdOrder.id,
+              fulfilledAt: new Date()
+            }
+          });
+        } catch (poErr) {
+          console.warn('[PreOrder Fulfill in POS Order] Note:', poErr);
+        }
+      }
+
       return {
         ...createdOrder,
         previousBillsSettled: settledReceipts
@@ -6956,6 +6988,295 @@ app.patch('/api/orders/:id/status', async (req: Request, res: Response) => {
     res.json(updated);
   } catch (error: any) {
     res.status(400).json({ error: error.message });
+  }
+});
+
+// ========================================================
+// 7.1 PRE-ORDERS / OUT-OF-STOCK ADVANCE BOOKINGS
+// ========================================================
+
+// GET all pre-orders (with filters for status, customer, route, search)
+app.get('/api/pre-orders', async (req: Request, res: Response) => {
+  try {
+    const { status, customerId, routeId, search } = req.query;
+
+    const where: any = {};
+    if (status && status !== 'ALL') {
+      where.status = status as string;
+    }
+    if (customerId) {
+      where.customerId = customerId as string;
+    }
+    if (routeId) {
+      where.customer = { routeId: routeId as string };
+    }
+    if (search && typeof search === 'string' && search.trim()) {
+      const q = search.trim();
+      where.OR = [
+        { preOrderNumber: { contains: q } },
+        { customer: { name: { contains: q } } },
+        { customer: { code: { contains: q } } },
+        { items: { some: { product: { name: { contains: q } } } } },
+        { items: { some: { product: { sku: { contains: q } } } } }
+      ];
+    }
+
+    const preOrders = await prisma.preOrder.findMany({
+      where,
+      include: {
+        customer: {
+          include: {
+            route: true
+          }
+        },
+        lorry: true,
+        items: {
+          include: {
+            product: {
+              include: {
+                lorryStocks: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Compute UI summary metadata for each pre-order
+    const formatted = preOrders.map(po => {
+      const totalItemsCount = po.items.reduce((sum, item) => sum + item.quantity, 0);
+      const totalEstimatedValue = po.items.reduce((sum, item) => sum + item.lineTotal, 0);
+      
+      // Stock availability in central warehouse
+      const hasAvailableStock = po.items.length > 0 && po.items.every(item => item.product.currentStock >= item.quantity);
+
+      return {
+        ...po,
+        totalItemsCount,
+        totalEstimatedValue,
+        hasAvailableStock
+      };
+    });
+
+    res.json(formatted);
+  } catch (error: any) {
+    console.error('Error fetching pre-orders:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch pre-orders' });
+  }
+});
+
+// GET pending pre-orders for a specific customer
+app.get('/api/customers/:id/pre-orders', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { status = 'PENDING', lorryId } = req.query;
+
+    const where: any = { customerId: id };
+    if (status && status !== 'ALL') {
+      where.status = status as string;
+    }
+
+    const preOrders = await prisma.preOrder.findMany({
+      where,
+      include: {
+        customer: true,
+        lorry: true,
+        items: {
+          include: {
+            product: {
+              include: {
+                lorryStocks: true
+              }
+            }
+          }
+        }
+      },
+      orderBy: { createdAt: 'desc' }
+    });
+
+    // Annotate stock availability for lorry or warehouse
+    const annotated = preOrders.map(po => {
+      let isReady = true;
+      const itemsWithStock = po.items.map(item => {
+        let availableQty = 0;
+        if (lorryId && typeof lorryId === 'string') {
+          const lStock = item.product.lorryStocks?.find(ls => ls.lorryId === lorryId);
+          availableQty = lStock?.quantity || 0;
+        } else {
+          availableQty = item.product.currentStock;
+        }
+
+        const isItemInStock = availableQty >= item.quantity;
+        if (!isItemInStock) isReady = false;
+
+        return {
+          ...item,
+          availableQty,
+          isItemInStock
+        };
+      });
+
+      return {
+        ...po,
+        items: itemsWithStock,
+        totalItemsCount: po.items.reduce((sum, item) => sum + item.quantity, 0),
+        totalEstimatedValue: po.items.reduce((sum, item) => sum + item.lineTotal, 0),
+        hasAvailableStock: isReady
+      };
+    });
+
+    res.json(annotated);
+  } catch (error: any) {
+    console.error('Error fetching customer pre-orders:', error);
+    res.status(500).json({ error: error.message || 'Failed to fetch customer pre-orders' });
+  }
+});
+
+// POST create a pre-order (from RepBilling, BillEntry, or Admin)
+app.post('/api/pre-orders', async (req: Request, res: Response) => {
+  try {
+    const { customerId, lorryId, userId, source = 'REP', notes, items } = req.body;
+
+    if (!customerId) {
+      return res.status(400).json({ error: 'Customer is required to take a pre-order.' });
+    }
+    if (!Array.isArray(items) || items.length === 0) {
+      return res.status(400).json({ error: 'At least one item is required for a pre-order.' });
+    }
+
+    const createdPreOrder = await prisma.$transaction(async (tx) => {
+      // 1. Generate unique sequential preOrderNumber (e.g. PRE-20261122-0001)
+      const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
+      const countToday = await tx.preOrder.count({
+        where: {
+          createdAt: {
+            gte: new Date(new Date().setHours(0, 0, 0, 0)),
+            lte: new Date(new Date().setHours(23, 59, 59, 999))
+          }
+        }
+      });
+      const seq = String(countToday + 1).padStart(4, '0');
+      const preOrderNumber = `PRE-${dateStr}-${seq}`;
+
+      // 2. Fetch products to get accurate unit prices
+      const productIds = items.map((i: any) => i.productId);
+      const prods = await tx.product.findMany({
+        where: { id: { in: productIds } }
+      });
+      const prodMap = new Map(prods.map(p => [p.id, p]));
+
+      const preOrderItemsData = items.map((i: any) => {
+        const p = prodMap.get(i.productId);
+        const unitPrice = typeof i.unitPrice === 'number' && i.unitPrice >= 0 ? i.unitPrice : (p?.unitPrice || 0);
+        const quantity = parseInt(i.quantity, 10) || 1;
+        const lineTotal = unitPrice * quantity;
+
+        return {
+          productId: i.productId,
+          quantity,
+          unitPrice,
+          lineTotal
+        };
+      });
+
+      return tx.preOrder.create({
+        data: {
+          preOrderNumber,
+          customerId,
+          lorryId: lorryId || null,
+          userId: userId || null,
+          source: source || 'REP',
+          status: 'PENDING',
+          notes: notes ? String(notes).trim() : null,
+          items: {
+            create: preOrderItemsData
+          }
+        },
+        include: {
+          customer: {
+            include: {
+              route: true
+            }
+          },
+          lorry: true,
+          items: {
+            include: {
+              product: true
+            }
+          }
+        }
+      });
+    });
+
+    res.status(201).json(createdPreOrder);
+  } catch (error: any) {
+    console.error('Error creating pre-order:', error);
+    res.status(500).json({ error: error.message || 'Failed to create pre-order' });
+  }
+});
+
+// POST fulfill a pre-order
+app.post('/api/pre-orders/:id/fulfill', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { orderId } = req.body;
+
+    const updated = await prisma.preOrder.update({
+      where: { id },
+      data: {
+        status: 'FULFILLED',
+        fulfilledOrderId: orderId || null,
+        fulfilledAt: new Date()
+      },
+      include: {
+        customer: true,
+        items: {
+          include: { product: true }
+        }
+      }
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error fulfilling pre-order:', error);
+    res.status(500).json({ error: error.message || 'Failed to fulfill pre-order' });
+  }
+});
+
+// PATCH cancel a pre-order
+app.patch('/api/pre-orders/:id/cancel', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { reason } = req.body;
+
+    const existing = await prisma.preOrder.findUnique({ where: { id } });
+    if (!existing) {
+      return res.status(404).json({ error: 'Pre-order not found' });
+    }
+
+    const updatedNotes = reason
+      ? `${existing.notes ? `${existing.notes} | ` : ''}Cancelled: ${reason}`
+      : existing.notes;
+
+    const updated = await prisma.preOrder.update({
+      where: { id },
+      data: {
+        status: 'CANCELLED',
+        notes: updatedNotes
+      },
+      include: {
+        customer: true,
+        items: {
+          include: { product: true }
+        }
+      }
+    });
+
+    res.json(updated);
+  } catch (error: any) {
+    console.error('Error cancelling pre-order:', error);
+    res.status(500).json({ error: error.message || 'Failed to cancel pre-order' });
   }
 });
 

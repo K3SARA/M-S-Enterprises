@@ -12,9 +12,10 @@ import {
   RefreshCw,
   Wallet,
   Calendar,
-  Users
+  Users,
+  Clock
 } from 'lucide-react';
-import { ReportService } from '../services/api';
+import { ReportService, PreOrderService } from '../services/api';
 import { DashboardStats, Order } from '../types';
 import { useCurrency } from '../context/CurrencyContext';
 import { DateRangeFilter, DatePreset } from '../components/DateRangeFilter';
@@ -25,6 +26,7 @@ interface DashboardProps {
   onNavigateToSettlement: () => void;
   onNavigateToInventory: () => void;
   onNavigateToExpenses?: () => void;
+  onNavigateToPreOrders?: () => void;
   onViewInvoice: (order: Order) => void;
 }
 
@@ -34,10 +36,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
   onNavigateToSettlement,
   onNavigateToInventory,
   onNavigateToExpenses,
+  onNavigateToPreOrders,
   onViewInvoice
 }) => {
   const { formatMoney } = useCurrency();
   const [stats, setStats] = useState<DashboardStats | null>(null);
+  const [pendingPreOrdersCount, setPendingPreOrdersCount] = useState<number>(0);
   const [loading, setLoading] = useState(true);
   const [datePreset, setDatePreset] = useState<DatePreset>('today');
   const [dateRange, setDateRange] = useState<{ from?: string; to?: string }>({});
@@ -46,8 +50,12 @@ export const Dashboard: React.FC<DashboardProps> = ({
 
   const fetchStats = async (from?: string, to?: string) => {
     try {
-      const data = await ReportService.getDashboardStats(from, to);
+      const [data, pos] = await Promise.all([
+        ReportService.getDashboardStats(from, to),
+        PreOrderService.getAll({ status: 'PENDING' }).catch(() => [])
+      ]);
       setStats(data);
+      setPendingPreOrdersCount(Array.isArray(pos) ? pos.length : 0);
     } catch (err) {
       console.error('Failed to load dashboard metrics', err);
     } finally {
@@ -157,6 +165,35 @@ export const Dashboard: React.FC<DashboardProps> = ({
           onRangeChange={handleDateRangeChange}
         />
       </div>
+
+      {/* Pending Pre-Orders Alert Banner */}
+      {pendingPreOrdersCount > 0 && (
+        <div className="p-3.5 bg-indigo-50/80 border border-indigo-200/90 rounded-3xl flex items-center justify-between gap-3 animate-fadeIn shadow-2xs">
+          <div className="flex items-center gap-3">
+            <div className="w-8 h-8 rounded-xl bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+              <Clock className="w-4 h-4" />
+            </div>
+            <div>
+              <span className="text-xs font-bold text-slate-900 block">
+                {pendingPreOrdersCount} Customer Pre-Order{pendingPreOrdersCount > 1 ? 's' : ''} Awaiting Fulfillment
+              </span>
+              <span className="text-[11px] text-slate-500">
+                Booked out-of-stock items ready to convert to sales bills as new stock arrives.
+              </span>
+            </div>
+          </div>
+          {onNavigateToPreOrders && (
+            <button
+              type="button"
+              onClick={onNavigateToPreOrders}
+              className="px-3 py-1.5 bg-indigo-600 hover:bg-indigo-700 active:scale-95 text-white text-xs font-bold rounded-xl shadow-xs transition flex items-center gap-1 shrink-0 cursor-pointer"
+            >
+              <span>View Bookings</span>
+              <ArrowRight className="w-3.5 h-3.5" />
+            </button>
+          )}
+        </div>
+      )}
 
       {/* 3 Lorries Live Fleet Widget */}
       <div className="space-y-3">

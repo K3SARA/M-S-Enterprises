@@ -38,6 +38,7 @@ model Product {
   loadingItems       LorryLoadingItem[]
   purchaseOrderItems PurchaseOrderItem[]
   orderReturns       OrderReturn[]
+  preOrderItems      PreOrderItem[]
   recipes            Recipe[]            @relation("ProductRecipes")
   recipeItems        RecipeItem[]        @relation("RecipeComponents")
   productionRunItems ProductionRunItem[] @relation("RunConsumedItems")
@@ -98,6 +99,7 @@ model Lorry {
   users            User[]
   locationLogs     LorryLocationHistory[]
   visits           CustomerVisit[]
+  preOrders        PreOrder[]
 }
 
 // Historical breadcrumb GPS track log for lorries/drivers
@@ -200,6 +202,7 @@ model Customer {
   orders   Order[]
   payments CustomerPayment[]
   visits   CustomerVisit[]
+  preOrders PreOrder[]
 }
 
 // --------------------------------------------------------
@@ -303,6 +306,46 @@ model OrderReturn {
   createdAt  DateTime @default(now())
 
   @@index([orderId])
+  @@index([productId])
+}
+
+// --------------------------------------------------------
+// 4.1 PRE-ORDERS / OUT-OF-STOCK ADVANCE BOOKINGS
+// --------------------------------------------------------
+model PreOrder {
+  id               String         @id @default(uuid())
+  preOrderNumber   String         @unique // e.g. "PRE-20261122-0001"
+  customerId       String
+  customer         Customer       @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  lorryId          String?
+  lorry            Lorry?         @relation(fields: [lorryId], references: [id])
+  userId           String?        // Rep or Office user
+  status           String         @default("PENDING") // PENDING, FULFILLED, CANCELLED
+  source           String         @default("REP") // "REP" (Rep Billing) | "OFFICE" (Office Bill Entry)
+  notes            String?
+  fulfilledOrderId String?        // Linked Sales Bill ID once fulfilled
+  fulfilledAt      DateTime?
+  createdAt        DateTime       @default(now())
+  updatedAt        DateTime       @updatedAt
+
+  items            PreOrderItem[]
+
+  @@index([customerId, status])
+  @@index([status])
+}
+
+model PreOrderItem {
+  id         String   @id @default(uuid())
+  preOrderId String
+  preOrder   PreOrder @relation(fields: [preOrderId], references: [id], onDelete: Cascade)
+  productId  String
+  product    Product  @relation(fields: [productId], references: [id])
+  quantity   Int      // Pre-ordered quantity
+  unitPrice  Float
+  lineTotal  Float
+  createdAt  DateTime @default(now())
+
+  @@index([preOrderId])
   @@index([productId])
 }
 
