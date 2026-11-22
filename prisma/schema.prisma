@@ -599,17 +599,22 @@ model Employee {
 }
 
 model Attendance {
-  id           String    @id @default(uuid())
-  employeeId   String
-  employee     Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
-  date         DateTime  @default(now()) // Midnight ISO date
-  status       String    @default("PRESENT") // "PRESENT", "HALF_DAY", "ABSENT", "LEAVE"
-  checkInTime  String?   // e.g. "08:00"
-  checkOutTime String?   // e.g. "17:30"
-  otHours      Float     @default(0.0)
-  notes        String?
-  createdAt    DateTime  @default(now())
-  updatedAt    DateTime  @updatedAt
+  id                String    @id @default(uuid())
+  employeeId        String
+  employee          Employee  @relation(fields: [employeeId], references: [id], onDelete: Cascade)
+  date              DateTime  @default(now()) // Midnight ISO date
+  status            String    @default("PRESENT") // "PRESENT", "HALF_DAY", "ABSENT", "LEAVE"
+  checkInTime       String?   // e.g. "08:00"
+  checkOutTime      String?   // e.g. "17:30"
+  checkInLatitude   Float?
+  checkInLongitude  Float?
+  checkOutLatitude  Float?
+  checkOutLongitude Float?
+  dutyHours         Float     @default(0.0) // Total shift hours
+  otHours           Float     @default(0.0)
+  notes             String?
+  createdAt         DateTime  @default(now())
+  updatedAt         DateTime  @updatedAt
 
   @@unique([employeeId, date])
 }

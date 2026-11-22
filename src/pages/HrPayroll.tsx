@@ -60,7 +60,7 @@ export const HrPayroll: React.FC = () => {
     const day = String(d.getDate()).padStart(2, '0');
     return `${year}-${month}-${day}`;
   });
-  const [attendanceMap, setAttendanceMap] = useState<Record<string, { status: AttendanceStatus; otHours: number; notes: string }>>({});
+  const [attendanceMap, setAttendanceMap] = useState<Record<string, { status: AttendanceStatus; otHours: number; notes: string; checkInTime?: string; checkOutTime?: string; dutyHours?: number }>>({});
   const [attendanceSaving, setAttendanceSaving] = useState(false);
 
   // Advances State
@@ -132,13 +132,16 @@ export const HrPayroll: React.FC = () => {
         ? response.attendances
         : [];
 
-      const map: Record<string, { status: AttendanceStatus; otHours: number; notes: string }> = {};
+      const map: Record<string, { status: AttendanceStatus; otHours: number; notes: string; checkInTime?: string; checkOutTime?: string; dutyHours?: number }> = {};
       records.forEach((r: any) => {
         const rawStatus = r.status === 'PENDING' ? 'PRESENT' : r.status;
         map[r.employeeId] = {
           status: (rawStatus || 'PRESENT') as AttendanceStatus,
           otHours: Number(r.otHours) || 0,
-          notes: r.notes || ''
+          notes: r.notes || '',
+          checkInTime: r.checkInTime || undefined,
+          checkOutTime: r.checkOutTime || undefined,
+          dutyHours: Number(r.dutyHours) || 0
         };
       });
 
@@ -734,6 +737,7 @@ export const HrPayroll: React.FC = () => {
                     <th className="py-3 px-4">Staff Member</th>
                     <th className="py-3 px-4">Department</th>
                     <th className="py-3 px-4 text-center">Status Toggle</th>
+                    <th className="py-3 px-4 text-center">Duty Time (Rep)</th>
                     <th className="py-3 px-4 text-center">OT Hours</th>
                     <th className="py-3 px-4">Notes / Remarks</th>
                   </tr>
@@ -792,6 +796,26 @@ export const HrPayroll: React.FC = () => {
                                 );
                               })}
                             </div>
+                          </td>
+                          <td className="py-3 px-4 text-center">
+                            {entry.checkInTime ? (
+                              <div className="inline-flex flex-col items-center">
+                                <div className="flex items-center gap-1 text-[11px] font-bold text-slate-800">
+                                  <span className="text-emerald-600">In: {entry.checkInTime}</span>
+                                  <span>•</span>
+                                  <span className={entry.checkOutTime ? 'text-blue-600' : 'text-amber-500 animate-pulse'}>
+                                    {entry.checkOutTime ? `Out: ${entry.checkOutTime}` : 'Active'}
+                                  </span>
+                                </div>
+                                {entry.dutyHours ? (
+                                  <span className="text-[10px] text-slate-500 font-mono mt-0.5">
+                                    {entry.dutyHours.toFixed(1)} hrs total
+                                  </span>
+                                ) : null}
+                              </div>
+                            ) : (
+                              <span className="text-[11px] text-slate-400 font-normal italic">Manual</span>
+                            )}
                           </td>
                           <td className="py-3 px-4 text-center">
                             <div className="inline-flex items-center gap-1.5">

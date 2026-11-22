@@ -1074,6 +1074,400 @@ app.get('/api/reps/my-targets', async (req: Request, res: Response) => {
 });
 
 // ========================================================
+// 0.1B SALES REP FIELD ATTENDANCE & AUTOMATIC PAYROLL
+// ========================================================
+
+// Helper to find or link Employee for a Sales Rep user
+async function getOrLinkRepEmployee(userId?: string, lorryId?: string) {
+  let employee: any = null;
+
+  if (userId) {
+    employee = await prisma.employee.findFirst({
+      where: { userId }
+    });
+  }
+
+  if (!employee && lorryId) {
+    employee = await prisma.employee.findFirst({
+      where: { lorryId }
+    });
+  }
+
+  if (!employee && userId) {
+    const user = await prisma.user.findUnique({ where: { id: userId } });
+    if (user) {
+      employee = await prisma.employee.findFirst({
+        where: {
+          fullName: { contains: user.fullName }
+        }
+      });
+
+      if (employee) {
+        employee = await prisma.employee.update({
+          where: { id: employee.id },
+          data: {
+            userId: user.id,
+            lorryId: user.lorryId || employee.lorryId
+          }
+        });
+      }
+    }
+  }
+
+  // Fallback: search any active sales rep employee
+  if (!employee) {
+    employee = await prisma.employee.findFirst({
+      where: {
+        designation: { contains: 'Sales' },
+        status: 'ACTIVE'
+      }
+    });
+  }
+
+  // If still none exists, auto-create an Employee for the Rep
+  if (!employee) {
+    let repName = 'Sales Rep';
+    let assignedLorryId = lorryId || null;
+    if (userId) {
+      const u = await prisma.user.findUnique({ where: { id: userId } });
+      if (u) {
+        repName = u.fullName;
+        if (!assignedLorryId) assignedLorryId = u.lorryId;
+      }
+    }
+
+    const count = await prisma.employee.count();
+    const empNum = `EMP-${String(count + 1).padStart(3, '0')}`;
+
+    employee = await prisma.employee.create({
+      data: {
+        employeeNumber: empNum,
+        fullName: repName,
+        phone: '0771234567',
+        designation: 'Sales Rep',
+        department: 'SALES_FLEET',
+        employmentType: 'FULL_TIME',
+        basicSalary: 45000,
+        otHourlyRate: 350,
+        commissionRate: 1.5,
+        allowances: 5000,
+        userId: userId || null,
+        lorryId: assignedLorryId,
+        status: 'ACTIVE'
+      }
+    });
+  }
+
+  return employee;
+}
+
+// 1. GET Rep Attendance Status for Today
+app.get('/api/rep/attendance/today', async (req: Request, res: Response) => {
+  try {
+    const { userId, lorryId } = req.query;
+    const employee = await getOrLinkRepEmployee(userId as string, lorryId as string);
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const attendance = await prisma.attendance.findFirst({
+      where: {
+        employeeId: employee.id,
+        date: { gte: startOfDay, lte: endOfDay }
+      }
+    });
+
+    const isCheckedIn = Boolean(attendance && attendance.checkInTime);
+    const isCheckedOut = Boolean(attendance && attendance.checkOutTime);
+
+    res.json({
+      employee,
+      attendance,
+      isCheckedIn,
+      checkInTime: attendance?.checkInTime || null,
+      isCheckedOut,
+      checkOutTime: attendance?.checkOutTime || null,
+      dutyHours: attendance?.dutyHours || 0,
+      otHours: attendance?.otHours || 0,
+      status: attendance?.status || 'ABSENT'
+    });
+  } catch (err: any) {
+    console.error('Error fetching today rep attendance:', err);
+    res.status(500).json({ error: err.message || 'Failed to fetch attendance status' });
+  }
+});
+
+// 2. POST Rep Check-In (Morning Route Departure)
+app.post('/api/rep/attendance/check-in', async (req: Request, res: Response) => {
+  try {
+    const { userId, lorryId, latitude, longitude, notes } = req.body;
+    const employee = await getOrLinkRepEmployee(userId, lorryId);
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(now.getMinutes()).padStart(2, '0');
+    const checkInTime = `${hours}:${mins}`;
+
+    // Check if attendance already exists for today
+    let attendance = await prisma.attendance.findFirst({
+      where: {
+        employeeId: employee.id,
+        date: { gte: startOfDay, lte: endOfDay }
+      }
+    });
+
+    if (attendance) {
+      if (attendance.checkInTime) {
+        return res.json({
+          success: true,
+          message: `Already checked in at ${attendance.checkInTime}.`,
+          attendance,
+          employee
+        });
+      }
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          status: 'PRESENT',
+          checkInTime,
+          checkInLatitude: typeof latitude === 'number' ? latitude : null,
+          checkInLongitude: typeof longitude === 'number' ? longitude : null,
+          notes: notes ? String(notes).trim() : attendance.notes
+        }
+      });
+    } else {
+      attendance = await prisma.attendance.create({
+        data: {
+          employeeId: employee.id,
+          date: startOfDay,
+          status: 'PRESENT',
+          checkInTime,
+          checkInLatitude: typeof latitude === 'number' ? latitude : null,
+          checkInLongitude: typeof longitude === 'number' ? longitude : null,
+          notes: notes ? String(notes).trim() : 'Mobile Rep Route Check-In'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Checked in successfully at ${checkInTime}. Attendance marked as PRESENT.`,
+      attendance,
+      employee
+    });
+  } catch (err: any) {
+    console.error('Error during rep check-in:', err);
+    res.status(500).json({ error: err.message || 'Failed to check in' });
+  }
+});
+
+// 3. POST Rep Check-Out (Evening Shift End / Route Settlement)
+app.post('/api/rep/attendance/check-out', async (req: Request, res: Response) => {
+  try {
+    const { userId, lorryId, latitude, longitude, notes } = req.body;
+    const employee = await getOrLinkRepEmployee(userId, lorryId);
+
+    const now = new Date();
+    const startOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 0, 0, 0, 0);
+    const endOfDay = new Date(now.getFullYear(), now.getMonth(), now.getDate(), 23, 59, 59, 999);
+
+    const hours = String(now.getHours()).padStart(2, '0');
+    const mins = String(now.getMinutes()).padStart(2, '0');
+    const checkOutTime = `${hours}:${mins}`;
+
+    let attendance = await prisma.attendance.findFirst({
+      where: {
+        employeeId: employee.id,
+        date: { gte: startOfDay, lte: endOfDay }
+      }
+    });
+
+    const effectiveCheckIn = attendance?.checkInTime || '08:00';
+    const [inH, inM] = effectiveCheckIn.split(':').map(Number);
+    const [outH, outM] = checkOutTime.split(':').map(Number);
+    const inTotalMins = (inH * 60) + (inM || 0);
+    const outTotalMins = (outH * 60) + (outM || 0);
+
+    const durationMins = Math.max(0, outTotalMins - inTotalMins);
+    const dutyHours = Math.round((durationMins / 60) * 10) / 10;
+    const otHours = Math.max(0, Math.round((dutyHours - 8.0) * 10) / 10);
+
+    if (attendance) {
+      attendance = await prisma.attendance.update({
+        where: { id: attendance.id },
+        data: {
+          checkOutTime,
+          checkOutLatitude: typeof latitude === 'number' ? latitude : null,
+          checkOutLongitude: typeof longitude === 'number' ? longitude : null,
+          dutyHours,
+          otHours,
+          notes: notes ? `${attendance.notes ? `${attendance.notes} | ` : ''}${notes}` : attendance.notes
+        }
+      });
+    } else {
+      attendance = await prisma.attendance.create({
+        data: {
+          employeeId: employee.id,
+          date: startOfDay,
+          status: 'PRESENT',
+          checkInTime: effectiveCheckIn,
+          checkOutTime,
+          checkOutLatitude: typeof latitude === 'number' ? latitude : null,
+          checkOutLongitude: typeof longitude === 'number' ? longitude : null,
+          dutyHours,
+          otHours,
+          notes: notes ? String(notes).trim() : 'Auto-created on Check-Out'
+        }
+      });
+    }
+
+    res.json({
+      success: true,
+      message: `Checked out successfully at ${checkOutTime}. (${dutyHours} hrs worked • ${otHours} hrs OT).`,
+      attendance,
+      dutyHours,
+      otHours,
+      employee
+    });
+  } catch (err: any) {
+    console.error('Error during rep check-out:', err);
+    res.status(500).json({ error: err.message || 'Failed to check out' });
+  }
+});
+
+// 4. GET Live Salary Slip & Payroll Preview for Rep
+app.get('/api/rep/salary-slip/current', async (req: Request, res: Response) => {
+  try {
+    const { userId, lorryId, month: qMonth, year: qYear } = req.query;
+    const employee = await getOrLinkRepEmployee(userId as string, lorryId as string);
+
+    const now = new Date();
+    const month = qMonth ? parseInt(qMonth as string, 10) : (now.getMonth() + 1);
+    const year = qYear ? parseInt(qYear as string, 10) : now.getFullYear();
+
+    const startOfMonth = new Date(year, month - 1, 1, 0, 0, 0, 0);
+    const endOfMonth = new Date(year, month, 0, 23, 59, 59, 999);
+
+    // 1. Attendance aggregation
+    const attendances = await prisma.attendance.findMany({
+      where: {
+        employeeId: employee.id,
+        date: { gte: startOfMonth, lte: endOfMonth }
+      },
+      orderBy: { date: 'asc' }
+    });
+
+    const presentDays = attendances.filter(a => a.status === 'PRESENT').length;
+    const halfDays = attendances.filter(a => a.status === 'HALF_DAY').length;
+    const workedDays = presentDays + (halfDays * 0.5);
+    const absentDays = attendances.filter(a => a.status === 'ABSENT').length;
+    const leaveDays = attendances.filter(a => a.status === 'LEAVE').length;
+    const totalDutyHours = attendances.reduce((acc, a) => acc + (a.dutyHours || 0), 0);
+    const totalOtHours = attendances.reduce((acc, a) => acc + (a.otHours || 0), 0);
+
+    // 2. Base salary & OT
+    let basicSalary = employee.basicSalary || 45000;
+    if (employee.employmentType === 'DAILY_WAGE' && employee.dailyRate > 0) {
+      basicSalary = employee.dailyRate * workedDays;
+    }
+    const otRate = employee.otHourlyRate || 350;
+    const otAmount = Math.round(totalOtHours * otRate);
+    const allowances = employee.allowances || 0;
+
+    // 3. Sales Commission calculation
+    const effectiveLorryId = employee.lorryId || (lorryId as string) || null;
+    let monthlySalesTotal = 0;
+    let salesCommission = 0;
+    const commissionRate = employee.commissionRate || 1.5;
+
+    if (effectiveLorryId) {
+      const deliveredOrders = await prisma.order.findMany({
+        where: {
+          lorryId: effectiveLorryId,
+          status: { not: 'CANCELLED' },
+          createdAt: { gte: startOfMonth, lte: endOfMonth }
+        },
+        select: { netTotal: true }
+      });
+      monthlySalesTotal = deliveredOrders.reduce((acc, o) => acc + o.netTotal, 0);
+      salesCommission = Math.round((monthlySalesTotal * commissionRate) / 100);
+    }
+
+    const performanceBonus = 0;
+    const grossEarnings = basicSalary + otAmount + allowances + salesCommission + performanceBonus;
+
+    // 4. Advances deduction
+    const pendingAdvances = await prisma.salaryAdvance.findMany({
+      where: {
+        employeeId: employee.id,
+        status: 'PENDING',
+        date: { lte: endOfMonth }
+      }
+    });
+    const advancesDeducted = pendingAdvances.reduce((acc, a) => acc + a.amount, 0);
+
+    // 5. EPF/ETF statutory deduction
+    const epfDeduction = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.08) : 0;
+    const employerEpf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.12) : 0;
+    const employerEtf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.03) : 0;
+
+    const otherDeductions = 0;
+    const totalDeductions = advancesDeducted + epfDeduction + otherDeductions;
+    const netPayable = Math.max(0, grossEarnings - totalDeductions);
+
+    // Check if formal payslip already generated
+    const existingPayroll = await prisma.payroll.findFirst({
+      where: { employeeId: employee.id, month, year }
+    });
+
+    res.json({
+      employee,
+      period: { month, year },
+      attendanceMetrics: {
+        workedDays,
+        presentDays,
+        halfDays,
+        absentDays,
+        leaveDays,
+        totalDutyHours,
+        totalOtHours,
+        records: attendances
+      },
+      earnings: {
+        basicSalary,
+        otAmount,
+        otRate,
+        allowances,
+        monthlySalesTotal,
+        commissionRate,
+        salesCommission,
+        performanceBonus,
+        grossEarnings
+      },
+      deductions: {
+        advancesDeducted,
+        pendingAdvances,
+        epfDeduction,
+        employerEpf,
+        employerEtf,
+        otherDeductions,
+        totalDeductions
+      },
+      netPayable,
+      isFinalized: Boolean(existingPayroll),
+      payrollRecord: existingPayroll
+    });
+  } catch (err: any) {
+    console.error('Error generating rep salary slip:', err);
+    res.status(500).json({ error: err.message || 'Failed to generate salary slip' });
+  }
+});
+
+// ========================================================
 // 0.2 BACKUP & DATA MIGRATION ENGINE (CLOUD -> OFFLINE DESKTOP)
 // ========================================================
 

@@ -24,6 +24,8 @@ import {
   RepTargetProgress,
   Employee,
   Attendance,
+  RepAttendanceStatus,
+  RepSalarySlipPreview,
   SalaryAdvance,
   Payroll,
   HrPayrollSummary,
@@ -813,4 +815,15 @@ export const PreOrderService = {
     api.post<PreOrder>(`/pre-orders/${id}/fulfill`, payload).then(r => r.data),
   cancel: (id: string, reason?: string) =>
     api.patch<PreOrder>(`/pre-orders/${id}/cancel`, { reason }).then(r => r.data),
+};
+
+export const RepAttendanceService = {
+  getTodayStatus: (params?: { userId?: string; lorryId?: string }) =>
+    api.get<RepAttendanceStatus>('/rep/attendance/today', { params }).then(r => r.data),
+  checkIn: (payload: { userId?: string; lorryId?: string; latitude?: number; longitude?: number; notes?: string }) =>
+    api.post<{ success: boolean; message: string; attendance: Attendance }>('/rep/attendance/check-in', payload).then(r => r.data),
+  checkOut: (payload: { userId?: string; lorryId?: string; latitude?: number; longitude?: number; notes?: string }) =>
+    api.post<{ success: boolean; message: string; attendance: Attendance; dutyHours: number; otHours: number }>('/rep/attendance/check-out', payload).then(r => r.data),
+  getCurrentSalarySlip: (params?: { userId?: string; lorryId?: string; month?: number; year?: number }) =>
+    api.get<RepSalarySlipPreview>('/rep/salary-slip/current', { params }).then(r => r.data),
 };

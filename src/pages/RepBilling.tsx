@@ -50,7 +50,10 @@ import {
   WifiOff,
   BarChart3,
   Gift,
-  Tag
+  Tag,
+  UserCheck,
+  UserX,
+  FileText
 } from 'lucide-react';
 import {
   Customer,
@@ -63,9 +66,11 @@ import {
   RouteOptimizationResult,
   OptimizedStop,
   RouteStatusResult,
-  PreOrder
+  PreOrder,
+  RepAttendanceStatus,
+  RepSalarySlipPreview
 } from '../types';
-import { CustomerService, LorryService, ProductService, OrderService, AuthService, MapService, RouteService, PreOrderService } from '../services/api';
+import { CustomerService, LorryService, ProductService, OrderService, AuthService, MapService, RouteService, PreOrderService, RepAttendanceService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { CustomerModal } from '../components/CustomerModal';
 import { RepBillsSummaryModal } from '../components/RepBillsSummaryModal';
@@ -167,6 +172,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [showAdminPasscodeModal, setShowAdminPasscodeModal] = useState<boolean>(false);
   const [adminOverridePasscode, setAdminOverridePasscode] = useState<string | null>(null);
   const [authorizedByName, setAuthorizedByName] = useState<string | null>(null);
+
+  // Rep Attendance & Salary Slip State
+  const [attendanceStatus, setAttendanceStatus] = useState<RepAttendanceStatus | null>(null);
+  const [checkingInOut, setCheckingInOut] = useState<boolean>(false);
+  const [showSalarySlipModal, setShowSalarySlipModal] = useState<boolean>(false);
+  const [salarySlip, setSalarySlip] = useState<RepSalarySlipPreview | null>(null);
+  const [loadingSalarySlip, setLoadingSalarySlip] = useState<boolean>(false);
 
   // Shift Hub (•••) Modal State (Apple iOS Style)
   const [showShiftHubModal, setShowShiftHubModal] = useState<boolean>(false);
@@ -312,7 +324,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       const next = !prev;
       try {
         localStorage.setItem('rep_next_stop_minimized', String(next));
-      } catch {}
+      } catch { }
       return next;
     });
   };
@@ -530,7 +542,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             setGpsError('Location permission was revoked in browser settings. Turn GPS back on to continue.');
           }
         };
-      }).catch(() => {});
+      }).catch(() => { });
     }
 
     const pingLocation = () => {
@@ -724,11 +736,122 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     }
   };
 
+  const loadAttendanceStatus = async (lorryId?: string) => {
+    try {
+      const lid = lorryId || selectedLorryId;
+      const status = await RepAttendanceService.getTodayStatus({
+        userId: user?.id,
+        lorryId: lid || undefined
+      });
+      setAttendanceStatus(status);
+    } catch (err) {
+      console.warn('Failed to load rep attendance status', err);
+    }
+  };
+
+  const handleCheckIn = async () => {
+    try {
+      setCheckingInOut(true);
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        try {
+          const pos: any = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 6000,
+              enableHighAccuracy: true
+            });
+          });
+          latitude = pos?.coords?.latitude;
+          longitude = pos?.coords?.longitude;
+        } catch {
+          // Non-blocking geolocation
+        }
+      }
+
+      const res = await RepAttendanceService.checkIn({
+        userId: user?.id,
+        lorryId: selectedLorryId || undefined,
+        latitude,
+        longitude
+      });
+      setSyncStatusToast(res.message || 'Morning check-in recorded successfully!');
+      setTimeout(() => setSyncStatusToast(null), 3500);
+      await loadAttendanceStatus();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err.message || 'Failed to check in');
+    } finally {
+      setCheckingInOut(false);
+    }
+  };
+
+  const handleCheckOut = async () => {
+    if (!window.confirm('Are you sure you want to Check Out and conclude today’s field shift? Your duty hours will be recorded for payroll.')) {
+      return;
+    }
+    try {
+      setCheckingInOut(true);
+      let latitude: number | undefined;
+      let longitude: number | undefined;
+      if (typeof navigator !== 'undefined' && navigator.geolocation) {
+        try {
+          const pos: any = await new Promise((resolve, reject) => {
+            navigator.geolocation.getCurrentPosition(resolve, reject, {
+              timeout: 6000,
+              enableHighAccuracy: true
+            });
+          });
+          latitude = pos?.coords?.latitude;
+          longitude = pos?.coords?.longitude;
+        } catch {
+          // Non-blocking geolocation
+        }
+      }
+
+      const res = await RepAttendanceService.checkOut({
+        userId: user?.id,
+        lorryId: selectedLorryId || undefined,
+        latitude,
+        longitude
+      });
+      setSyncStatusToast(`Shift completed: ${res.dutyHours} hrs worked (${res.otHours} hrs OT)`);
+      setTimeout(() => setSyncStatusToast(null), 4000);
+      await loadAttendanceStatus();
+    } catch (err: any) {
+      alert(err?.response?.data?.error || err.message || 'Failed to check out');
+    } finally {
+      setCheckingInOut(false);
+    }
+  };
+
+  const handleOpenSalarySlip = async () => {
+    setShowSalarySlipModal(true);
+    setLoadingSalarySlip(true);
+    try {
+      const data = await RepAttendanceService.getCurrentSalarySlip({
+        userId: user?.id,
+        lorryId: selectedLorryId || undefined
+      });
+      setSalarySlip(data);
+    } catch (err) {
+      console.error('Failed to load salary slip preview', err);
+    } finally {
+      setLoadingSalarySlip(false);
+    }
+  };
+
   useEffect(() => {
     loadData();
     loadTargets();
     loadFinishedBills();
+    loadAttendanceStatus();
   }, []);
+
+  useEffect(() => {
+    if (selectedLorryId) {
+      loadAttendanceStatus(selectedLorryId);
+    }
+  }, [selectedLorryId]);
 
   const loadData = async () => {
     try {
@@ -925,10 +1048,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             </thead>
             <tbody>
               ${filteredStockProducts.map((p, idx) => {
-                const s = lorryStockMap.get(p.id);
-                const paid = s?.stock || 0;
-                const free = s?.freeStock || 0;
-                return `
+      const s = lorryStockMap.get(p.id);
+      const paid = s?.stock || 0;
+      const free = s?.freeStock || 0;
+      return `
                   <tr>
                     <td>${idx + 1}</td>
                     <td><strong>${p.name}</strong><br/><span style="color:#64748b;font-size:10px">${p.sku}</span></td>
@@ -939,7 +1062,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <td class="num">${formatMoney(paid * p.unitPrice)}</td>
                   </tr>
                 `;
-              }).join('')}
+    }).join('')}
               <tr class="total">
                 <td colspan="4">TOTALS (${stockPageStats.itemCount} SKUs)</td>
                 <td class="num">${stockPageStats.totalPaidQty} Units</td>
@@ -1008,29 +1131,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       return;
     }
     const qtyToAdd = Math.min(item.quantity, availableLorryStock);
-    
-    // Add to cart
-    setCart(prev => {
-      const existing = prev.find(c => c.productId === prod.id);
-      if (existing) {
-        return prev.map(c => c.productId === prod.id ? { ...c, quantity: Math.min(c.quantity + qtyToAdd, availableLorryStock) } : c);
-      }
-      return [
-        ...prev,
-        {
-          productId: prod.id,
-          sku: prod.sku,
-          name: prod.name,
-          category: prod.category || 'General',
-          unit: prod.unit || 'Unit',
-          unitPrice: prod.unitPrice,
-          originalUnitPrice: prod.unitPrice,
-          availableStock: availableLorryStock,
-          quantity: qtyToAdd,
-          freeQuantity: 0
-        }
-      ];
-    });
+
+    // Add to cart using established helper
+    addToCart(prod, qtyToAdd);
 
     if (!fulfilledPreOrderIds.includes(preOrderId)) {
       setFulfilledPreOrderIds(prev => [...prev, preOrderId]);
@@ -1555,13 +1658,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     // Apply item-specific search
     const filtered = itemSearchQuery.trim()
       ? allAggregated.filter((it) => {
-          const q = itemSearchQuery.toLowerCase();
-          return (
-            it.name.toLowerCase().includes(q) ||
-            it.sku.toLowerCase().includes(q) ||
-            it.category.toLowerCase().includes(q)
-          );
-        })
+        const q = itemSearchQuery.toLowerCase();
+        return (
+          it.name.toLowerCase().includes(q) ||
+          it.sku.toLowerCase().includes(q) ||
+          it.category.toLowerCase().includes(q)
+        );
+      })
       : allAggregated;
 
     // Apply sort
@@ -1644,12 +1747,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       const previousBillsPayload =
         billingMethod === 'BILL_TO_BILL' && collectPrevBill && customerUnpaidBills.length > 0 && customerUnpaidBills[0]
           ? [
-              {
-                orderId: customerUnpaidBills[0].id,
-                amount: parseFloat(settlePrevAmount) || 0,
-                paymentMethod: paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod
-              }
-            ]
+            {
+              orderId: customerUnpaidBills[0].id,
+              amount: parseFloat(settlePrevAmount) || 0,
+              paymentMethod: paymentMethod === 'CREDIT' ? 'CASH' : paymentMethod
+            }
+          ]
           : [];
 
       // Generate a globally unique client reference ID for idempotency deduplication
@@ -2053,13 +2156,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             type="button"
             disabled={!selectedCustomerId}
             onClick={() => setCurrentStep(2)}
-            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs border ${
-              !selectedCustomerId
-                ? 'bg-slate-100 text-slate-400 border-slate-200/60 opacity-60 cursor-not-allowed select-none'
-                : cart.length > 0
-                  ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20 active:scale-95 cursor-pointer'
-                  : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 active:scale-95 cursor-pointer'
-            }`}
+            className={`flex items-center gap-1.5 px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs border ${!selectedCustomerId
+              ? 'bg-slate-100 text-slate-400 border-slate-200/60 opacity-60 cursor-not-allowed select-none'
+              : cart.length > 0
+                ? 'bg-blue-600 text-white border-blue-600 shadow-blue-500/20 active:scale-95 cursor-pointer'
+                : 'bg-slate-100 text-slate-700 border-slate-200 hover:bg-slate-200 active:scale-95 cursor-pointer'
+              }`}
             title={!selectedCustomerId ? 'Locked: Select a customer first' : 'View Cart'}
           >
             {!selectedCustomerId ? (
@@ -2069,9 +2171,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             )}
             <span>Cart</span>
             {selectedCustomerId && totalItemsCount > 0 && (
-              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${
-                cart.length > 0 ? 'bg-white text-blue-700' : 'bg-slate-300 text-slate-800'
-              }`}>
+              <span className={`px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold ${cart.length > 0 ? 'bg-white text-blue-700' : 'bg-slate-300 text-slate-800'
+                }`}>
                 {totalItemsCount}
               </span>
             )}
@@ -2116,6 +2217,104 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           />
         </div>
       </div>
+
+      {/* 2b. REP SHIFT ATTENDANCE BAR (ULTRA CLEAN, MINIMAL & FUNCTIONAL) */}
+      {attendanceStatus && (
+        <div className="bg-slate-50 border-b border-slate-200/70 px-3.5 sm:px-4 py-1.5 transition">
+          <div className="max-w-2xl mx-auto flex items-center justify-between gap-2">
+            {!attendanceStatus.isCheckedIn ? (
+              <>
+                <div className="flex items-center gap-2 min-w-0">
+                  <div className="w-5 h-5 rounded-full bg-emerald-100 text-emerald-600 flex items-center justify-center shrink-0">
+                    <Clock className="w-3 h-3" />
+                  </div>
+                  <div className="min-w-0">
+                    <span className="text-[11px] font-bold text-slate-800">Ready to start route shift?</span>
+                    <span className="text-[10px] text-slate-500 hidden sm:inline ml-1.5">• Auto-marks HR attendance</span>
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCheckIn}
+                    disabled={checkingInOut}
+                    className="px-2.5 py-1 rounded-xl bg-emerald-600 hover:bg-emerald-700 active:scale-95 text-white text-[11px] font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                  >
+                    {checkingInOut ? <RefreshCw className="w-3 h-3 animate-spin" /> : <UserCheck className="w-3.5 h-3.5" />}
+                    <span>Check In</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenSalarySlip}
+                    className="px-2 py-1 rounded-xl bg-white hover:bg-slate-100 text-slate-700 border border-slate-200 text-[11px] font-bold shadow-2xs active:scale-95 transition flex items-center gap-1 cursor-pointer"
+                    title="View My Salary Slip"
+                  >
+                    <FileText className="w-3 h-3 text-blue-600" />
+                    <span>Payslip</span>
+                  </button>
+                </div>
+              </>
+            ) : !attendanceStatus.isCheckedOut ? (
+              <>
+                <div className="flex items-center gap-2 min-w-0">
+                  <span className="w-2 h-2 rounded-full bg-emerald-500 animate-pulse shrink-0" />
+                  <div className="flex items-center gap-1.5 text-[11px] text-slate-700 truncate">
+                    <span className="font-bold text-slate-900">Shift Active</span>
+                    <span className="text-slate-400">•</span>
+                    <span>In at <strong className="text-slate-900 font-semibold">{attendanceStatus.checkInTime}</strong></span>
+                    {attendanceStatus.dutyHours > 0 && (
+                      <>
+                        <span className="text-slate-400">•</span>
+                        <span className="font-mono text-blue-600 font-bold">{attendanceStatus.dutyHours.toFixed(1)}h</span>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex items-center gap-1.5 shrink-0">
+                  <button
+                    type="button"
+                    onClick={handleCheckOut}
+                    disabled={checkingInOut}
+                    className="px-2.5 py-1 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-95 text-rose-700 border border-rose-200 text-[11px] font-bold transition flex items-center gap-1 cursor-pointer disabled:opacity-50"
+                    title="Conclude route shift & calculate overtime hours"
+                  >
+                    {checkingInOut ? <RefreshCw className="w-3 h-3 animate-spin text-rose-600" /> : <LogOut className="w-3 h-3 text-rose-600" />}
+                    <span>Check Out</span>
+                  </button>
+                  <button
+                    type="button"
+                    onClick={handleOpenSalarySlip}
+                    className="px-2 py-1 rounded-xl bg-white hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 text-[11px] font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer"
+                    title="View My Salary Slip"
+                  >
+                    <FileText className="w-3 h-3 text-blue-600" />
+                    <span>Payslip</span>
+                  </button>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="flex items-center gap-2 min-w-0">
+                  <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                  <div className="text-[11px] text-slate-600 truncate">
+                    <span className="font-bold text-slate-800">Shift Concluded:</span> {attendanceStatus.checkInTime} – {attendanceStatus.checkOutTime}
+                    <span className="font-mono text-slate-500 ml-1 font-semibold">({attendanceStatus.dutyHours.toFixed(1)}h{attendanceStatus.otHours > 0 ? ` • ${attendanceStatus.otHours.toFixed(1)}h OT` : ''})</span>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={handleOpenSalarySlip}
+                  className="px-2.5 py-1 rounded-xl bg-white hover:bg-slate-100 active:scale-95 text-slate-700 border border-slate-200 text-[11px] font-bold shadow-2xs transition flex items-center gap-1 cursor-pointer shrink-0"
+                  title="View My Salary Slip"
+                >
+                  <FileText className="w-3 h-3 text-blue-600" />
+                  <span>Payslip</span>
+                </button>
+              </>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Error Banner */}
       {errorMessage && (
@@ -2301,8 +2500,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         <span>
                           {routeOptimization.nextStop.distanceFromCurrentKm < 900
                             ? (routeOptimization.nextStop.distanceFromCurrentKm >= 1
-                                ? `${routeOptimization.nextStop.distanceFromCurrentKm.toFixed(1)} km away from lorry`
-                                : `${Math.round(routeOptimization.nextStop.distanceFromCurrentKm * 1000)}m away from lorry`)
+                              ? `${routeOptimization.nextStop.distanceFromCurrentKm.toFixed(1)} km away from lorry`
+                              : `${Math.round(routeOptimization.nextStop.distanceFromCurrentKm * 1000)}m away from lorry`)
                             : 'En route on assigned delivery track'}
                         </span>
                       </div>
@@ -2363,11 +2562,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <div
                     className="bg-emerald-400 h-full rounded-full transition-all duration-300"
                     style={{
-                      width: `${
-                        routeOptimization.totalCount > 0
-                          ? (routeOptimization.visitedCount / routeOptimization.totalCount) * 100
-                          : 0
-                      }%`
+                      width: `${routeOptimization.totalCount > 0
+                        ? (routeOptimization.visitedCount / routeOptimization.totalCount) * 100
+                        : 0
+                        }%`
                     }}
                   />
                 </div>
@@ -2377,11 +2575,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <button
                     type="button"
                     onClick={() => setRouteViewMode('SMART_SEQUENCE')}
-                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                      routeViewMode === 'SMART_SEQUENCE'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
-                    }`}
+                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${routeViewMode === 'SMART_SEQUENCE'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
+                      }`}
                   >
                     <Sparkles className="w-3.5 h-3.5 text-blue-300" />
                     <span>Optimized Route</span>
@@ -2390,11 +2587,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <button
                     type="button"
                     onClick={() => setRouteViewMode('ALL_CUSTOMERS')}
-                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
-                      routeViewMode === 'ALL_CUSTOMERS'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
-                    }`}
+                    className={`py-1.5 px-2.5 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${routeViewMode === 'ALL_CUSTOMERS'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-slate-900 text-white hover:bg-slate-800 border border-slate-800 shadow-2xs'
+                      }`}
                   >
                     <Users className="w-3.5 h-3.5 text-slate-300" />
                     <span>All Stores ({customers.length})</span>
@@ -2475,25 +2671,23 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <div
                       key={customer.id}
                       onClick={() => setSelectedCustomerId(customer.id)}
-                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
-                          : isNext
+                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${isSelected
+                        ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
+                        : isNext
                           ? 'border-indigo-300 bg-indigo-100/75 hover:border-indigo-400 hover:bg-indigo-100/90'
                           : isVisited
-                          ? 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200'
-                          : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
-                      }`}
+                            ? 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200'
+                            : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
+                        }`}
                     >
                       {/* Sequence / Visited Indicator */}
                       <div
-                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 transition shadow-2xs ${
-                          isVisited
-                            ? 'bg-emerald-100 text-emerald-700'
-                            : isNext
+                        className={`w-8 h-8 rounded-xl flex items-center justify-center font-bold text-xs shrink-0 mt-0.5 transition shadow-2xs ${isVisited
+                          ? 'bg-emerald-100 text-emerald-700'
+                          : isNext
                             ? 'bg-blue-600 text-white shadow-xs ring-2 ring-blue-200'
                             : 'bg-white text-slate-700 border border-slate-300'
-                        }`}
+                          }`}
                       >
                         {isVisited ? '✓' : `#${stop.sequence}`}
                       </div>
@@ -2572,11 +2766,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         )}
 
                         <div
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${
-                            isSelected
-                              ? 'bg-blue-600 text-white'
-                              : 'border-2 border-slate-300 bg-white'
-                          }`}
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${isSelected
+                            ? 'bg-blue-600 text-white'
+                            : 'border-2 border-slate-300 bg-white'
+                            }`}
                         >
                           {isSelected && '✓'}
                         </div>
@@ -2595,11 +2788,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <div
                       key={customer.id}
                       onClick={() => setSelectedCustomerId(customer.id)}
-                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${
-                        isSelected
-                          ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
-                          : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
-                      }`}
+                      className={`cursor-pointer p-3 rounded-2xl border transition-all duration-150 flex items-start gap-2.5 shadow-xs ${isSelected
+                        ? 'border-blue-600 bg-blue-100/85 ring-2 ring-blue-500/80 shadow-sm'
+                        : 'border-slate-300/90 bg-slate-200/75 hover:bg-slate-200 hover:border-slate-400'
+                        }`}
                     >
                       <div className="min-w-0 flex-1 space-y-1">
                         {/* Top Line: Full Customer Name (Completely Visible) + "Good" Badge */}
@@ -2652,11 +2844,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         )}
 
                         <div
-                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${
-                            isSelected
-                              ? 'bg-blue-600 text-white'
-                              : 'border-2 border-slate-300 bg-white'
-                          }`}
+                          className={`w-5 h-5 rounded-full flex items-center justify-center text-[10px] font-bold transition shadow-2xs ${isSelected
+                            ? 'bg-blue-600 text-white'
+                            : 'border-2 border-slate-300 bg-white'
+                            }`}
                         >
                           {isSelected && '✓'}
                         </div>
@@ -2675,11 +2866,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <button
                     type="button"
                     onClick={() => setBillingMethod('NORMAL')}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold transition ${
-                      billingMethod === 'NORMAL'
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
-                    }`}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition ${billingMethod === 'NORMAL'
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
+                      }`}
                   >
                     Normal Bill
                   </button>
@@ -2687,11 +2877,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <button
                     type="button"
                     onClick={() => setBillingMethod('BILL_TO_BILL')}
-                    className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${
-                      billingMethod === 'BILL_TO_BILL'
-                        ? 'bg-amber-600 text-white shadow-xs'
-                        : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
-                    }`}
+                    className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1 ${billingMethod === 'BILL_TO_BILL'
+                      ? 'bg-amber-600 text-white shadow-xs'
+                      : 'bg-white/90 text-slate-700 hover:bg-white border border-slate-300/80 shadow-2xs'
+                      }`}
                   >
                     <span>Bill-to-Bill</span>
                     {customerUnpaidBills.length > 0 && (
@@ -3061,18 +3250,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                               <button
                                 type="button"
                                 onClick={() => setCartItemDiscountType(item.productId, '%')}
-                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
-                                  item.discountType !== 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
-                                }`}
+                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${item.discountType !== 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                                  }`}
                               >
                                 %
                               </button>
                               <button
                                 type="button"
                                 onClick={() => setCartItemDiscountType(item.productId, 'Rs')}
-                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${
-                                  item.discountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
-                                }`}
+                                className={`px-1.5 py-0.5 rounded transition cursor-pointer ${item.discountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                                  }`}
                               >
                                 Rs
                               </button>
@@ -3164,31 +3351,31 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 <p className="text-xs text-amber-600">The morning lorry load has not been done yet, or no stock is available on this vehicle.</p>
               </div>
             ) : (
-            <div className="grid grid-cols-2 gap-2.5">
-              {availableBrands.map(brand => {
-                const count = lorryProducts.filter(p => p.category.toLowerCase() === brand.toLowerCase()).length;
-                return (
-                  <button
-                    key={brand}
-                    type="button"
-                    onClick={() => {
-                      setSelectedBrand(brand);
-                      setItemSearch('');
-                      setCurrentStep(4);
-                    }}
-                    className="p-3.5 bg-white border border-slate-200 hover:border-blue-500 rounded-xl text-left shadow-2xs flex flex-col justify-between h-24 active:scale-[0.98] transition"
-                  >
-                    <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
-                      <Layers className="w-3.5 h-3.5" />
-                    </div>
-                    <div>
-                      <h3 className="font-bold text-xs text-slate-900 truncate">{brand}</h3>
-                      <p className="text-[10px] text-slate-400 font-medium">{count} Items</p>
-                    </div>
-                  </button>
-                );
-              })}
-            </div>
+              <div className="grid grid-cols-2 gap-2.5">
+                {availableBrands.map(brand => {
+                  const count = lorryProducts.filter(p => p.category.toLowerCase() === brand.toLowerCase()).length;
+                  return (
+                    <button
+                      key={brand}
+                      type="button"
+                      onClick={() => {
+                        setSelectedBrand(brand);
+                        setItemSearch('');
+                        setCurrentStep(4);
+                      }}
+                      className="p-3.5 bg-white border border-slate-200 hover:border-blue-500 rounded-xl text-left shadow-2xs flex flex-col justify-between h-24 active:scale-[0.98] transition"
+                    >
+                      <div className="w-7 h-7 rounded-lg bg-blue-50 text-blue-600 flex items-center justify-center font-bold">
+                        <Layers className="w-3.5 h-3.5" />
+                      </div>
+                      <div>
+                        <h3 className="font-bold text-xs text-slate-900 truncate">{brand}</h3>
+                        <p className="text-[10px] text-slate-400 font-medium">{count} Items</p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
             )}
 
             <div className="flex items-center justify-between pt-2">
@@ -3483,11 +3670,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         setShowAdminPasscodeModal(true);
                       }
                     }}
-                    className={`py-2 rounded-lg text-xs font-bold transition ${
-                      paymentMethod === m
-                        ? 'bg-blue-600 text-white shadow-xs'
-                        : 'bg-white border border-slate-200 text-slate-600'
-                    }`}
+                    className={`py-2 rounded-lg text-xs font-bold transition ${paymentMethod === m
+                      ? 'bg-blue-600 text-white shadow-xs'
+                      : 'bg-white border border-slate-200 text-slate-600'
+                      }`}
                   >
                     {m}
                   </button>
@@ -3603,11 +3789,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         key={b}
                         type="button"
                         onClick={() => setBankName(b)}
-                        className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition cursor-pointer ${
-                          bankName === b
-                            ? 'bg-blue-600 text-white font-bold'
-                            : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
-                        }`}
+                        className={`text-[10px] px-2 py-0.5 rounded-md font-medium transition cursor-pointer ${bankName === b
+                          ? 'bg-blue-600 text-white font-bold'
+                          : 'bg-white border border-slate-200 text-slate-600 hover:bg-slate-100'
+                          }`}
                       >
                         {b}
                       </button>
@@ -3666,9 +3851,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         setBillDiscountType('%');
                         setBillDiscountManual(true);
                       }}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                        billDiscountType === '%' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
-                      }`}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${billDiscountType === '%' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                        }`}
                     >
                       %
                     </button>
@@ -3678,9 +3862,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         setBillDiscountType('Rs');
                         setBillDiscountManual(true);
                       }}
-                      className={`px-2 py-0.5 rounded transition cursor-pointer ${
-                        billDiscountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
-                      }`}
+                      className={`px-2 py-0.5 rounded transition cursor-pointer ${billDiscountType === 'Rs' ? 'bg-amber-500 text-white shadow-2xs' : 'text-slate-600'
+                        }`}
                     >
                       Rs
                     </button>
@@ -3881,11 +4064,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <div className="space-y-1">
                     <div className="w-full bg-amber-200/70 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          (targetProgress?.dailyPercentage || 0) >= 100
-                            ? 'bg-emerald-500'
-                            : 'bg-gradient-to-r from-amber-500 to-orange-500'
-                        }`}
+                        className={`h-full rounded-full transition-all duration-500 ${(targetProgress?.dailyPercentage || 0) >= 100
+                          ? 'bg-emerald-500'
+                          : 'bg-gradient-to-r from-amber-500 to-orange-500'
+                          }`}
                         style={{ width: `${Math.min(100, targetProgress?.dailyPercentage || 0)}%` }}
                       />
                     </div>
@@ -3930,13 +4112,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <div className="space-y-1">
                     <div className="w-full bg-indigo-200/70 rounded-full h-2.5 overflow-hidden">
                       <div
-                        className={`h-full rounded-full transition-all duration-500 ${
-                          (targetProgress?.monthlyPercentage || 0) >= 100
-                            ? 'bg-emerald-500'
-                            : (targetProgress?.monthlyPercentage || 0) >= 50
+                        className={`h-full rounded-full transition-all duration-500 ${(targetProgress?.monthlyPercentage || 0) >= 100
+                          ? 'bg-emerald-500'
+                          : (targetProgress?.monthlyPercentage || 0) >= 50
                             ? 'bg-indigo-600'
                             : 'bg-blue-500'
-                        }`}
+                          }`}
                         style={{ width: `${Math.min(100, targetProgress?.monthlyPercentage || 0)}%` }}
                       />
                     </div>
@@ -4107,11 +4288,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 <button
                   type="button"
                   onClick={() => setBillsViewMode('BILLS')}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    billsViewMode === 'BILLS'
-                      ? 'bg-white text-slate-900 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${billsViewMode === 'BILLS'
+                    ? 'bg-white text-slate-900 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <Receipt className="w-3.5 h-3.5 text-blue-600" />
                   <span>Bills Ledger ({filteredFinishedBills.length})</span>
@@ -4119,11 +4299,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 <button
                   type="button"
                   onClick={() => setBillsViewMode('ITEMS')}
-                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
-                    billsViewMode === 'ITEMS'
-                      ? 'bg-white text-emerald-800 shadow-2xs'
-                      : 'text-slate-600 hover:text-slate-900'
-                  }`}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${billsViewMode === 'ITEMS'
+                    ? 'bg-white text-emerald-800 shadow-2xs'
+                    : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
                   <Boxes className="w-3.5 h-3.5 text-emerald-600" />
                   <span>Item-Wise Sales ({itemWiseSalesData.items.length} SKUs)</span>
@@ -4187,33 +4366,30 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     <button
                       type="button"
                       onClick={() => setItemSortFilter('QTY_DESC')}
-                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                        itemSortFilter === 'QTY_DESC'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${itemSortFilter === 'QTY_DESC'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                     >
                       Qty Sold
                     </button>
                     <button
                       type="button"
                       onClick={() => setItemSortFilter('REVENUE_DESC')}
-                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                        itemSortFilter === 'REVENUE_DESC'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${itemSortFilter === 'REVENUE_DESC'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                     >
                       Revenue
                     </button>
                     <button
                       type="button"
                       onClick={() => setItemSortFilter('NAME')}
-                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
-                        itemSortFilter === 'NAME'
-                          ? 'bg-emerald-600 text-white shadow-2xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${itemSortFilter === 'NAME'
+                        ? 'bg-emerald-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                     >
                       A-Z
                     </button>
@@ -4245,11 +4421,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         key={dp.id}
                         type="button"
                         onClick={() => handleDatePresetChange(dp.id)}
-                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${
-                          isActive
-                            ? 'bg-blue-600 text-white shadow-2xs'
-                            : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                        }`}
+                        className={`px-2.5 py-1 rounded-lg text-xs font-bold transition whitespace-nowrap shrink-0 cursor-pointer ${isActive
+                          ? 'bg-blue-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                          }`}
                       >
                         {dp.label}
                       </button>
@@ -4298,26 +4473,24 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     tab === 'CASH'
                       ? 'bg-emerald-600 text-white shadow-2xs'
                       : tab === 'CREDIT'
-                      ? 'bg-rose-600 text-white shadow-2xs'
-                      : tab === 'CHEQUE'
-                      ? 'bg-orange-600 text-white shadow-2xs'
-                      : 'bg-slate-900 text-white shadow-2xs';
+                        ? 'bg-rose-600 text-white shadow-2xs'
+                        : tab === 'CHEQUE'
+                          ? 'bg-orange-600 text-white shadow-2xs'
+                          : 'bg-slate-900 text-white shadow-2xs';
 
                   return (
                     <button
                       key={tab}
                       type="button"
                       onClick={() => setBillsFilter(tab)}
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${
-                        billsFilter === tab
-                          ? activeStyles
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold transition flex items-center gap-1 shrink-0 cursor-pointer ${billsFilter === tab
+                        ? activeStyles
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                     >
                       <span>{tab === 'ALL' ? 'All' : tab}</span>
-                      <span className={`text-[10px] font-mono px-1 rounded-full ${
-                        billsFilter === tab ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
-                      }`}>
+                      <span className={`text-[10px] font-mono px-1 rounded-full ${billsFilter === tab ? 'bg-white/20 text-white' : 'bg-slate-200 text-slate-700'
+                        }`}>
                         {count}
                       </span>
                     </button>
@@ -4329,39 +4502,39 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             {/* View Mode Content: Bills List OR Item-Wise Sales Table */}
             {billsViewMode === 'BILLS' ? (
               /* Finished Bills Scrollable List */
-            <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2.5 bg-slate-50/50">
-              {loadingFinishedBills && finishedBills.length === 0 ? (
-                <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
-                  <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
-                  <span>Loading finished bills...</span>
-                </div>
-              ) : filteredFinishedBills.length === 0 ? (
-                <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-200 p-6 space-y-2">
-                  <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
-                  <p className="text-xs font-bold text-slate-700">No finished bills found</p>
-                  <p className="text-[11px] text-slate-400">
-                    {billsSearch || billsFilter !== 'ALL'
-                      ? 'No bills match your active search or filter.'
-                      : 'Completed sales bills will appear here with full line details and reprint options.'}
-                  </p>
-                </div>
-              ) : (
-                filteredFinishedBills.map(bill => {
-                  const isExpanded = expandedBillId === bill.id;
-                  const totalItemsQty = bill.items.reduce((acc, i) => acc + i.quantity, 0);
-                  const totalFreeQty = bill.items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0);
-                  const creditDue = Math.max(0, bill.netTotal - (bill.cashReceived || 0));
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2.5 bg-slate-50/50">
+                {loadingFinishedBills && finishedBills.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <div className="w-5 h-5 border-2 border-blue-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading finished bills...</span>
+                  </div>
+                ) : filteredFinishedBills.length === 0 ? (
+                  <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-200 p-6 space-y-2">
+                    <Receipt className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700">No finished bills found</p>
+                    <p className="text-[11px] text-slate-400">
+                      {billsSearch || billsFilter !== 'ALL'
+                        ? 'No bills match your active search or filter.'
+                        : 'Completed sales bills will appear here with full line details and reprint options.'}
+                    </p>
+                  </div>
+                ) : (
+                  filteredFinishedBills.map(bill => {
+                    const isExpanded = expandedBillId === bill.id;
+                    const totalItemsQty = bill.items.reduce((acc, i) => acc + i.quantity, 0);
+                    const totalFreeQty = bill.items.reduce((acc, i) => acc + (i.freeQuantity || 0), 0);
+                    const creditDue = Math.max(0, bill.netTotal - (bill.cashReceived || 0));
 
-                  // Color Themes:
-                  // Cash bills: Light Green
-                  // Cheque bills & Partial Credit bills: Light Orange
-                  // Pure Credit bills: Light Red
-                  const isCash = bill.paymentMethod === 'CASH';
-                  const isCheque = bill.paymentMethod === 'CHEQUE';
-                  const isPartialCredit = bill.paymentMethod === 'CREDIT' && bill.paymentStatus === 'PARTIAL';
+                    // Color Themes:
+                    // Cash bills: Light Green
+                    // Cheque bills & Partial Credit bills: Light Orange
+                    // Pure Credit bills: Light Red
+                    const isCash = bill.paymentMethod === 'CASH';
+                    const isCheque = bill.paymentMethod === 'CHEQUE';
+                    const isPartialCredit = bill.paymentMethod === 'CREDIT' && bill.paymentStatus === 'PARTIAL';
 
-                  const theme = isCash
-                    ? {
+                    const theme = isCash
+                      ? {
                         container: 'bg-emerald-50/70 border-emerald-200/90 hover:border-emerald-300',
                         badge: 'bg-emerald-100 text-emerald-800 border-emerald-300/80',
                         tag: 'bg-white text-emerald-950 border-emerald-200',
@@ -4371,149 +4544,149 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         expandedBox: 'bg-white border-emerald-200',
                         label: 'CASH'
                       }
-                    : isCheque || isPartialCredit
-                    ? {
-                        container: 'bg-orange-50/70 border-orange-200/90 hover:border-orange-300',
-                        badge: 'bg-orange-100 text-orange-900 border-orange-300/80',
-                        tag: 'bg-white text-orange-950 border-orange-200',
-                        itemsBox: 'bg-orange-100/40 border border-orange-200/60 text-orange-900',
-                        button: 'bg-orange-100/70 hover:bg-orange-200/80 text-orange-900 border-orange-300/60',
-                        divider: 'border-orange-200/60',
-                        expandedBox: 'bg-white border-orange-200',
-                        label: isCheque ? 'CHEQUE' : 'PARTIAL CREDIT'
-                      }
-                    : {
-                        container: 'bg-rose-50/70 border-rose-200/90 hover:border-rose-300',
-                        badge: 'bg-rose-100 text-rose-900 border-rose-300/80',
-                        tag: 'bg-white text-rose-950 border-rose-200',
-                        itemsBox: 'bg-rose-100/40 border border-rose-200/60 text-rose-900',
-                        button: 'bg-rose-100/70 hover:bg-rose-200/80 text-rose-900 border-rose-300/60',
-                        divider: 'border-rose-200/60',
-                        expandedBox: 'bg-white border-rose-200',
-                        label: 'CREDIT'
-                      };
+                      : isCheque || isPartialCredit
+                        ? {
+                          container: 'bg-orange-50/70 border-orange-200/90 hover:border-orange-300',
+                          badge: 'bg-orange-100 text-orange-900 border-orange-300/80',
+                          tag: 'bg-white text-orange-950 border-orange-200',
+                          itemsBox: 'bg-orange-100/40 border border-orange-200/60 text-orange-900',
+                          button: 'bg-orange-100/70 hover:bg-orange-200/80 text-orange-900 border-orange-300/60',
+                          divider: 'border-orange-200/60',
+                          expandedBox: 'bg-white border-orange-200',
+                          label: isCheque ? 'CHEQUE' : 'PARTIAL CREDIT'
+                        }
+                        : {
+                          container: 'bg-rose-50/70 border-rose-200/90 hover:border-rose-300',
+                          badge: 'bg-rose-100 text-rose-900 border-rose-300/80',
+                          tag: 'bg-white text-rose-950 border-rose-200',
+                          itemsBox: 'bg-rose-100/40 border border-rose-200/60 text-rose-900',
+                          button: 'bg-rose-100/70 hover:bg-rose-200/80 text-rose-900 border-rose-300/60',
+                          divider: 'border-rose-200/60',
+                          expandedBox: 'bg-white border-rose-200',
+                          label: 'CREDIT'
+                        };
 
-                  return (
-                    <div
-                      key={bill.id}
-                      className={`rounded-2xl border p-3.5 shadow-2xs transition space-y-2.5 ${theme.container}`}
-                    >
-                      {/* Top Row: Slip #, Time & Net Total */}
-                      <div className={`flex items-start justify-between gap-2 border-b pb-2 ${theme.divider}`}>
-                        <div>
-                          <div className="flex items-center gap-2">
-                            <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg border shadow-3xs ${theme.tag}`}>
-                              #{bill.paperBillNumber || bill.orderNumber}
-                            </span>
-                            <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${theme.badge}`}>
-                              {theme.label}
-                            </span>
-                          </div>
-                          <p className="text-[10px] text-slate-500 font-mono mt-1">
-                            {new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(bill.createdAt).toLocaleDateString()}
-                          </p>
-                        </div>
-
-                        <div className="text-right">
-                          <span className="font-mono font-bold text-sm sm:text-base text-slate-900 block">
-                            {formatMoney(bill.netTotal)}
-                          </span>
-                          {creditDue > 0 ? (
-                            <span className="text-[10px] font-bold text-rose-600 font-mono">
-                              Due: {formatMoney(creditDue)}
-                            </span>
-                          ) : (
-                            <span className="text-[10px] font-semibold text-emerald-600">
-                              Paid in full
-                            </span>
-                          )}
-                        </div>
-                      </div>
-
-                      {/* Customer Row */}
-                      <div className="flex items-center justify-between text-xs">
-                        <div className="min-w-0 flex-1">
-                          <p className="font-bold text-slate-800 truncate">
-                            {bill.customer.name}
-                            {bill.customer.code ? (
-                              <span className="text-[10px] text-slate-400 font-mono font-normal ml-1">
-                                [{bill.customer.code}]
+                    return (
+                      <div
+                        key={bill.id}
+                        className={`rounded-2xl border p-3.5 shadow-2xs transition space-y-2.5 ${theme.container}`}
+                      >
+                        {/* Top Row: Slip #, Time & Net Total */}
+                        <div className={`flex items-start justify-between gap-2 border-b pb-2 ${theme.divider}`}>
+                          <div>
+                            <div className="flex items-center gap-2">
+                              <span className={`font-mono font-bold text-xs px-2 py-0.5 rounded-lg border shadow-3xs ${theme.tag}`}>
+                                #{bill.paperBillNumber || bill.orderNumber}
                               </span>
-                            ) : null}
-                          </p>
-                          <p className="text-[11px] text-slate-500 truncate">
-                            {bill.customer.companyName || bill.customer.deliveryAddress || bill.customer.city || 'Standard Outlet'}
-                          </p>
-                        </div>
-                      </div>
-
-                      {/* Items Summary & Expand Trigger */}
-                      <div className={`rounded-xl p-2 flex items-center justify-between text-[11px] ${theme.itemsBox}`}>
-                        <div className="flex items-center gap-1.5 truncate">
-                          <span className="font-semibold text-slate-800">{bill.items.length} Products</span>
-                          <span>•</span>
-                          <span>{totalItemsQty} units</span>
-                          {totalFreeQty > 0 && (
-                            <span className="text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded text-[10px]">
-                              +{totalFreeQty} Free
-                            </span>
-                          )}
-                        </div>
-
-                        <button
-                          type="button"
-                          onClick={() => setExpandedBillId(isExpanded ? null : bill.id)}
-                          className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-0.5 shrink-0 ml-2 cursor-pointer"
-                        >
-                          <span>{isExpanded ? 'Hide' : 'Items'}</span>
-                          {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
-                        </button>
-                      </div>
-
-                      {/* Expanded Items Breakdown */}
-                      {isExpanded && (
-                        <div className={`border rounded-xl p-2.5 space-y-1.5 text-xs animate-in fade-in ${theme.expandedBox}`}>
-                          <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-100">
-                            <span>Item Name</span>
-                            <span>Line Total</span>
-                          </div>
-                          {bill.items.map(item => (
-                            <div key={item.id} className="flex justify-between text-[11px] leading-tight">
-                              <div className="min-w-0 pr-2">
-                                <span className="font-medium text-slate-800 block truncate">{item.product.name}</span>
-                                <span className="text-[10px] text-slate-400 font-mono">
-                                  {item.quantity} {item.product.unit || 'pcs'} x {formatMoney(item.unitPrice)}
-                                  {item.freeQuantity > 0 && (
-                                    <span className="text-emerald-600 font-bold ml-1">+{item.freeQuantity} Free</span>
-                                  )}
-                                </span>
-                              </div>
-                              <span className="font-mono font-bold text-slate-800 shrink-0">
-                                {formatMoney(item.lineTotal)}
+                              <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full border ${theme.badge}`}>
+                                {theme.label}
                               </span>
                             </div>
-                          ))}
-                        </div>
-                      )}
+                            <p className="text-[10px] text-slate-500 font-mono mt-1">
+                              {new Date(bill.createdAt).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })} • {new Date(bill.createdAt).toLocaleDateString()}
+                            </p>
+                          </div>
 
-                      {/* Action Buttons: 1-Tap 80mm Print */}
-                      <div className="pt-1 flex items-center justify-between gap-2">
-                        <button
-                          type="button"
-                          onClick={() => {
-                            onViewInvoice?.(bill);
-                          }}
-                          className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-3xs ${theme.button}`}
-                        >
-                          <Printer className="w-3.5 h-3.5" />
-                          <span>View & Print 80mm Receipt</span>
-                        </button>
+                          <div className="text-right">
+                            <span className="font-mono font-bold text-sm sm:text-base text-slate-900 block">
+                              {formatMoney(bill.netTotal)}
+                            </span>
+                            {creditDue > 0 ? (
+                              <span className="text-[10px] font-bold text-rose-600 font-mono">
+                                Due: {formatMoney(creditDue)}
+                              </span>
+                            ) : (
+                              <span className="text-[10px] font-semibold text-emerald-600">
+                                Paid in full
+                              </span>
+                            )}
+                          </div>
+                        </div>
+
+                        {/* Customer Row */}
+                        <div className="flex items-center justify-between text-xs">
+                          <div className="min-w-0 flex-1">
+                            <p className="font-bold text-slate-800 truncate">
+                              {bill.customer.name}
+                              {bill.customer.code ? (
+                                <span className="text-[10px] text-slate-400 font-mono font-normal ml-1">
+                                  [{bill.customer.code}]
+                                </span>
+                              ) : null}
+                            </p>
+                            <p className="text-[11px] text-slate-500 truncate">
+                              {bill.customer.companyName || bill.customer.deliveryAddress || bill.customer.city || 'Standard Outlet'}
+                            </p>
+                          </div>
+                        </div>
+
+                        {/* Items Summary & Expand Trigger */}
+                        <div className={`rounded-xl p-2 flex items-center justify-between text-[11px] ${theme.itemsBox}`}>
+                          <div className="flex items-center gap-1.5 truncate">
+                            <span className="font-semibold text-slate-800">{bill.items.length} Products</span>
+                            <span>•</span>
+                            <span>{totalItemsQty} units</span>
+                            {totalFreeQty > 0 && (
+                              <span className="text-emerald-700 font-bold bg-emerald-100/70 px-1.5 py-0.2 rounded text-[10px]">
+                                +{totalFreeQty} Free
+                              </span>
+                            )}
+                          </div>
+
+                          <button
+                            type="button"
+                            onClick={() => setExpandedBillId(isExpanded ? null : bill.id)}
+                            className="text-blue-600 hover:text-blue-700 font-bold flex items-center gap-0.5 shrink-0 ml-2 cursor-pointer"
+                          >
+                            <span>{isExpanded ? 'Hide' : 'Items'}</span>
+                            {isExpanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+                          </button>
+                        </div>
+
+                        {/* Expanded Items Breakdown */}
+                        {isExpanded && (
+                          <div className={`border rounded-xl p-2.5 space-y-1.5 text-xs animate-in fade-in ${theme.expandedBox}`}>
+                            <div className="flex justify-between text-[10px] font-bold text-slate-400 uppercase tracking-wider pb-1 border-b border-slate-100">
+                              <span>Item Name</span>
+                              <span>Line Total</span>
+                            </div>
+                            {bill.items.map(item => (
+                              <div key={item.id} className="flex justify-between text-[11px] leading-tight">
+                                <div className="min-w-0 pr-2">
+                                  <span className="font-medium text-slate-800 block truncate">{item.product.name}</span>
+                                  <span className="text-[10px] text-slate-400 font-mono">
+                                    {item.quantity} {item.product.unit || 'pcs'} x {formatMoney(item.unitPrice)}
+                                    {item.freeQuantity > 0 && (
+                                      <span className="text-emerald-600 font-bold ml-1">+{item.freeQuantity} Free</span>
+                                    )}
+                                  </span>
+                                </div>
+                                <span className="font-mono font-bold text-slate-800 shrink-0">
+                                  {formatMoney(item.lineTotal)}
+                                </span>
+                              </div>
+                            ))}
+                          </div>
+                        )}
+
+                        {/* Action Buttons: 1-Tap 80mm Print */}
+                        <div className="pt-1 flex items-center justify-between gap-2">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              onViewInvoice?.(bill);
+                            }}
+                            className={`flex-1 py-1.5 px-3 rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition cursor-pointer shadow-3xs ${theme.button}`}
+                          >
+                            <Printer className="w-3.5 h-3.5" />
+                            <span>View & Print 80mm Receipt</span>
+                          </button>
+                        </div>
                       </div>
-                    </div>
-                  );
-                })
-              )}
-            </div>
+                    );
+                  })
+                )}
+              </div>
             ) : (
               /* Item-Wise Sales Table (Clean, Mobile-optimized & responsive) */
               <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 bg-slate-50/50">
@@ -5069,6 +5242,38 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-purple-600 transition" />
                 </button>
 
+                {/* 2b. Rep Attendance & Monthly Salary Slip */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleOpenSalarySlip();
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <FileText className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">My Attendance & Salary Slip</span>
+                        {attendanceStatus && (
+                          <span className={`text-[10px] font-bold px-1.5 py-0.5 rounded-md ${
+                            attendanceStatus.isCheckedOut ? 'bg-slate-100 text-slate-700' : attendanceStatus.isCheckedIn ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700'
+                          }`}>
+                            {attendanceStatus.isCheckedOut ? 'Concluded' : attendanceStatus.isCheckedIn ? 'Shift Active' : 'Not Checked In'}
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Live worked days, route sales commission, overtime &amp; net salary preview
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition" />
+                </button>
+
                 {/* 3. Invoices & Daily Sales Ledger */}
                 <button
                   type="button"
@@ -5416,11 +5621,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   <button
                     type="button"
                     onClick={() => setStockCategoryFilter('ALL')}
-                    className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${
-                      stockCategoryFilter === 'ALL'
-                        ? 'bg-slate-900 text-white shadow-2xs'
-                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                    }`}
+                    className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer ${stockCategoryFilter === 'ALL'
+                      ? 'bg-slate-900 text-white shadow-2xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
                   >
                     All Items ({lorryProducts.length})
                   </button>
@@ -5429,18 +5633,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       key={cat.name}
                       type="button"
                       onClick={() => setStockCategoryFilter(cat.name)}
-                      className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${
-                        stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
-                          ? 'bg-blue-600 text-white shadow-2xs'
-                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
-                      }`}
+                      className={`px-3 py-1 rounded-xl text-xs font-bold transition shrink-0 cursor-pointer flex items-center gap-1.5 ${stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
+                        ? 'bg-blue-600 text-white shadow-2xs'
+                        : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                        }`}
                     >
                       <span>{cat.name}</span>
-                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${
-                        stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
-                          ? 'bg-white/20 text-white'
-                          : 'bg-slate-200 text-slate-700'
-                      }`}>
+                      <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-mono ${stockCategoryFilter.toLowerCase() === cat.name.toLowerCase()
+                        ? 'bg-white/20 text-white'
+                        : 'bg-slate-200 text-slate-700'
+                        }`}>
                         {cat.count}
                       </span>
                     </button>
@@ -5524,11 +5726,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       {/* Stock Pill & Action Row */}
                       <div className="pt-2 border-t border-slate-100 flex items-center justify-between gap-2">
                         <div className="flex items-center gap-1.5 flex-wrap">
-                          <div className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${
-                            isLow
-                              ? 'bg-amber-50 text-amber-800 border border-amber-200'
-                              : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
-                          }`}>
+                          <div className={`px-2.5 py-1 rounded-xl text-xs font-extrabold flex items-center gap-1.5 ${isLow
+                            ? 'bg-amber-50 text-amber-800 border border-amber-200'
+                            : 'bg-emerald-50 text-emerald-800 border border-emerald-200'
+                            }`}>
                             <span className={`w-2 h-2 rounded-full ${isLow ? 'bg-amber-500' : 'bg-emerald-500'}`} />
                             <span>{paid} {product.unit}</span>
                           </div>
@@ -5553,13 +5754,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                             setStockPageToast(`✓ Added 1x "${product.name}" to cart`);
                             setTimeout(() => setStockPageToast(null), 2500);
                           }}
-                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs ${
-                            !selectedCustomerId
-                              ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'
-                              : cartItem
-                                ? 'bg-emerald-600 text-white hover:bg-emerald-700'
-                                : 'bg-blue-600 text-white hover:bg-blue-700'
-                          }`}
+                          className={`px-3 py-1.5 rounded-xl text-xs font-bold transition flex items-center gap-1 active:scale-95 cursor-pointer shadow-2xs ${!selectedCustomerId
+                            ? 'bg-slate-100 text-slate-500 hover:bg-slate-200 border border-slate-200'
+                            : cartItem
+                              ? 'bg-emerald-600 text-white hover:bg-emerald-700'
+                              : 'bg-blue-600 text-white hover:bg-blue-700'
+                            }`}
                         >
                           {!selectedCustomerId ? (
                             <>
@@ -5685,6 +5885,209 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 </button>
               </div>
             </form>
+          </div>
+        </div>
+      )}
+      {/* REP SALARY SLIP PREVIEW MODAL */}
+      {showSalarySlipModal && (
+        <div className="fixed inset-0 z-50 bg-black/60 backdrop-blur-xs flex items-end sm:items-center justify-center p-0 sm:p-4">
+          <div className="bg-white rounded-t-3xl sm:rounded-2xl w-full max-w-lg shadow-2xl border border-slate-200 overflow-hidden flex flex-col max-h-[92vh] animate-in slide-in-from-bottom sm:zoom-in-95 duration-200">
+            {/* iOS Handle (Mobile) */}
+            <div className="pt-2.5 pb-1 flex justify-center sm:hidden">
+              <div className="w-12 h-1.5 bg-slate-300 rounded-full" />
+            </div>
+
+            {/* Modal Header */}
+            <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/50">
+              <div className="flex items-center gap-2.5">
+                <div className="w-9 h-9 rounded-xl bg-gradient-to-tr from-blue-600 to-indigo-600 text-white flex items-center justify-center shadow-xs">
+                  <FileText className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-sm font-bold text-slate-900 leading-tight">My Salary &amp; Route Commission</h3>
+                  <p className="text-[11px] text-slate-500 font-medium mt-0.5">
+                    {salarySlip ? `${['January', 'February', 'March', 'April', 'May', 'June', 'July', 'August', 'September', 'October', 'November', 'December'][(salarySlip.period?.month || 1) - 1]} ${salarySlip.period?.year}` : 'Current Month Slip'} &bull; Live Payroll Preview
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowSalarySlipModal(false)}
+                className="w-8 h-8 rounded-full bg-slate-100 hover:bg-slate-200 text-slate-500 hover:text-slate-700 flex items-center justify-center text-sm font-bold transition cursor-pointer"
+              >
+                ✕
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-4 sm:p-5 overflow-y-auto space-y-4 text-xs">
+              {loadingSalarySlip ? (
+                <div className="py-12 flex flex-col items-center justify-center text-slate-400 gap-2">
+                  <RefreshCw className="w-6 h-6 animate-spin text-blue-600" />
+                  <span className="text-xs font-semibold">Calculating live route earnings &amp; attendance...</span>
+                </div>
+              ) : !salarySlip ? (
+                <div className="py-8 text-center text-slate-500">
+                  <AlertCircle className="w-8 h-8 text-slate-400 mx-auto mb-2" />
+                  <p className="font-semibold">Employee profile not linked</p>
+                  <p className="text-[11px] text-slate-400 mt-1">Please make sure this Rep user is linked to an Employee record in HR.</p>
+                </div>
+              ) : (
+                <>
+                  {/* Rep Identity Banner */}
+                  <div className="p-3 bg-gradient-to-r from-blue-50/80 to-indigo-50/80 border border-blue-100 rounded-2xl flex items-center justify-between">
+                    <div>
+                      <p className="font-bold text-slate-900 text-sm">{salarySlip.employee?.fullName || user?.fullName}</p>
+                      <p className="text-[11px] text-slate-500 font-mono mt-0.5">
+                        {salarySlip.employee?.employeeNumber || 'REP-EMP'} &bull; {salarySlip.employee?.designation || 'Sales Representative'}
+                      </p>
+                    </div>
+                    {selectedLorry?.vehicleNumber && (
+                      <div className="text-right">
+                        <span className="text-[10px] font-bold text-blue-700 uppercase tracking-wider block">Assigned Lorry</span>
+                        <span className="font-bold text-slate-800 text-xs font-mono">{selectedLorry.vehicleNumber}</span>
+                      </div>
+                    )}
+                  </div>
+
+                  {/* 3 Metric Mini Cards */}
+                  <div className="grid grid-cols-3 gap-2 text-center">
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">Days Worked</span>
+                      <span className="text-base font-extrabold text-slate-900 font-mono mt-0.5 block">
+                        {salarySlip.attendanceMetrics?.workedDays ?? 0}
+                        <span className="text-[10px] text-slate-400 font-normal"> / 26d</span>
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">OT Hours</span>
+                      <span className="text-base font-extrabold text-blue-600 font-mono mt-0.5 block">
+                        {(salarySlip.attendanceMetrics?.totalOtHours ?? 0).toFixed(1)}
+                        <span className="text-[10px] text-slate-400 font-normal"> hrs</span>
+                      </span>
+                    </div>
+
+                    <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80">
+                      <span className="text-[10px] text-slate-500 font-semibold block uppercase tracking-wider">Commission</span>
+                      <span className="text-base font-extrabold text-emerald-600 font-mono mt-0.5 block truncate">
+                        {formatMoney(salarySlip.earnings?.salesCommission ?? 0)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Route Sales Note */}
+                  <div className="p-2.5 rounded-xl bg-emerald-50/70 border border-emerald-200/80 flex items-center justify-between text-[11px]">
+                    <div className="flex items-center gap-1.5 text-emerald-900">
+                      <Target className="w-3.5 h-3.5 text-emerald-600 shrink-0" />
+                      <span>Route Sales Total: <strong>{formatMoney(salarySlip.earnings?.monthlySalesTotal ?? 0)}</strong></span>
+                    </div>
+                    <span className="px-1.5 py-0.5 rounded-md bg-emerald-200/80 text-emerald-900 font-mono font-bold text-[10px]">
+                      {salarySlip.earnings?.commissionRate ?? 1.5}% Rate
+                    </span>
+                  </div>
+
+                  {/* Earnings & Deductions Breakdown */}
+                  <div className="bg-white border border-slate-200 rounded-2xl overflow-hidden divide-y divide-slate-100">
+                    {/* Earnings Group */}
+                    <div className="p-3 space-y-1.5">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Earnings</p>
+                      <div className="flex justify-between items-center text-slate-700">
+                        <span>Basic Salary</span>
+                        <span className="font-mono font-semibold">{formatMoney(salarySlip.earnings?.basicSalary ?? 0)}</span>
+                      </div>
+                      {(salarySlip.earnings?.salesCommission ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-emerald-700">
+                          <span>Route Sales Commission ({salarySlip.earnings?.commissionRate ?? 1.5}%)</span>
+                          <span className="font-mono font-bold">+{formatMoney(salarySlip.earnings?.salesCommission ?? 0)}</span>
+                        </div>
+                      )}
+                      {(salarySlip.earnings?.otAmount ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-blue-700">
+                          <span>Overtime Pay ({(salarySlip.attendanceMetrics?.totalOtHours ?? 0).toFixed(1)} hrs)</span>
+                          <span className="font-mono font-semibold">+{formatMoney(salarySlip.earnings?.otAmount ?? 0)}</span>
+                        </div>
+                      )}
+                      {(salarySlip.earnings?.allowances ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-slate-700">
+                          <span>Fixed Allowances (Travel / Food)</span>
+                          <span className="font-mono font-semibold">+{formatMoney(salarySlip.earnings?.allowances ?? 0)}</span>
+                        </div>
+                      )}
+                      <div className="pt-1 border-t border-slate-100 flex justify-between items-center text-slate-900 font-bold">
+                        <span>Gross Earnings</span>
+                        <span className="font-mono">{formatMoney(salarySlip.earnings?.grossEarnings ?? 0)}</span>
+                      </div>
+                    </div>
+
+                    {/* Deductions Group */}
+                    <div className="p-3 space-y-1.5 bg-slate-50/40">
+                      <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Deductions</p>
+                      {(salarySlip.deductions?.epfDeduction ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>EPF (8% Employee Contribution)</span>
+                          <span className="font-mono text-rose-600 font-semibold">-{formatMoney(salarySlip.deductions?.epfDeduction ?? 0)}</span>
+                        </div>
+                      )}
+                      {(salarySlip.deductions?.advancesDeducted ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Salary Advances Drawn This Month</span>
+                          <span className="font-mono text-rose-600 font-semibold">-{formatMoney(salarySlip.deductions?.advancesDeducted ?? 0)}</span>
+                        </div>
+                      )}
+                      {(salarySlip.deductions?.otherDeductions ?? 0) > 0 && (
+                        <div className="flex justify-between items-center text-slate-600">
+                          <span>Other Deductions</span>
+                          <span className="font-mono text-rose-600 font-semibold">-{formatMoney(salarySlip.deductions?.otherDeductions ?? 0)}</span>
+                        </div>
+                      )}
+                      <div className="pt-1 border-t border-slate-100 flex justify-between items-center text-slate-700 font-semibold">
+                        <span>Total Deductions</span>
+                        <span className="font-mono text-rose-600 font-bold">-{formatMoney(salarySlip.deductions?.totalDeductions ?? 0)}</span>
+                      </div>
+                    </div>
+
+                    {/* Net Take-Home Pay Pill */}
+                    <div className="p-3.5 bg-gradient-to-r from-emerald-500 to-teal-600 text-white flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] uppercase font-bold tracking-wider text-emerald-100 block">Net Estimated Take-Home Pay</span>
+                        <span className="text-[11px] text-emerald-100 font-medium">After all EPF &amp; advance deductions</span>
+                      </div>
+                      <span className="text-xl font-extrabold font-mono tracking-tight">
+                        {formatMoney(salarySlip.netPayable ?? 0)}
+                      </span>
+                    </div>
+                  </div>
+
+                  {/* Informational Employer Contributions */}
+                  <div className="p-2.5 rounded-xl bg-slate-50 border border-slate-200/80 text-[10.5px] text-slate-500 flex items-center justify-between">
+                    <span>Employer Benefits Paid:</span>
+                    <span className="font-medium text-slate-700 font-mono">
+                      EPF (12%): {formatMoney(salarySlip.deductions?.employerEpf ?? 0)} &bull; ETF (3%): {formatMoney(salarySlip.deductions?.employerEtf ?? 0)}
+                    </span>
+                  </div>
+                </>
+              )}
+            </div>
+
+            {/* Modal Actions */}
+            <div className="p-3.5 sm:p-4 border-t border-slate-100 bg-slate-50 flex items-center justify-between gap-2">
+              <button
+                type="button"
+                onClick={() => executeSystemPrint()}
+                className="px-3.5 py-2 rounded-xl bg-slate-200 hover:bg-slate-300 text-slate-800 font-bold text-xs flex items-center gap-1.5 transition active:scale-95 cursor-pointer"
+              >
+                <Printer className="w-3.5 h-3.5" />
+                <span>Print Slip</span>
+              </button>
+              <button
+                type="button"
+                onClick={() => setShowSalarySlipModal(false)}
+                className="px-5 py-2 rounded-xl bg-slate-900 hover:bg-slate-800 text-white font-bold text-xs transition active:scale-95 cursor-pointer shadow-xs"
+              >
+                Close
+              </button>
+            </div>
           </div>
         </div>
       )}

@@ -874,10 +874,65 @@ export interface Attendance {
   status: AttendanceStatus;
   checkInTime?: string | null;
   checkOutTime?: string | null;
+  checkInLatitude?: number | null;
+  checkInLongitude?: number | null;
+  checkOutLatitude?: number | null;
+  checkOutLongitude?: number | null;
+  dutyHours?: number;
   otHours: number;
   notes?: string | null;
   createdAt: string;
   updatedAt: string;
+}
+
+export interface RepAttendanceStatus {
+  employee: Employee;
+  attendance: Attendance | null;
+  isCheckedIn: boolean;
+  checkInTime: string | null;
+  isCheckedOut: boolean;
+  checkOutTime: string | null;
+  dutyHours: number;
+  otHours: number;
+  status: AttendanceStatus;
+}
+
+export interface RepSalarySlipPreview {
+  employee: Employee;
+  period: { month: number; year: number };
+  attendanceMetrics: {
+    workedDays: number;
+    presentDays: number;
+    halfDays: number;
+    absentDays: number;
+    leaveDays: number;
+    totalDutyHours: number;
+    totalOtHours: number;
+    records: Attendance[];
+  };
+  earnings: {
+    basicSalary: number;
+    otAmount: number;
+    otRate: number;
+    allowances: number;
+    monthlySalesTotal: number;
+    commissionRate: number;
+    salesCommission: number;
+    performanceBonus: number;
+    grossEarnings: number;
+  };
+  deductions: {
+    advancesDeducted: number;
+    pendingAdvances: SalaryAdvance[];
+    epfDeduction: number;
+    employerEpf: number;
+    employerEtf: number;
+    otherDeductions: number;
+    totalDeductions: number;
+  };
+  netPayable: number;
+  isFinalized: boolean;
+  payrollRecord?: Payroll | null;
 }
 
 export interface SalaryAdvance {
