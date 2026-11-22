@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo, useRef } from 'react';
 import {
   Truck,
   Plus,
@@ -10,7 +10,10 @@ import {
   Boxes,
   Compass,
   RotateCcw,
-  ArrowLeftRight
+  ArrowLeftRight,
+  Search,
+  X,
+  Package
 } from 'lucide-react';
 import { Lorry, Product, LorryLoading as LorryLoadingType } from '../types';
 import { LorryService, ProductService } from '../services/api';
@@ -37,6 +40,59 @@ export const LorryLoading: React.FC = () => {
   const [successMessage, setSuccessMessage] = useState<string | null>(null);
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
   const [showExchangeModal, setShowExchangeModal] = useState<boolean>(false);
+
+  // Quick Search & Add State
+  const [quickSearchQuery, setQuickSearchQuery] = useState<string>('');
+  const [isSearchOpen, setIsSearchOpen] = useState<boolean>(false);
+  const searchContainerRef = useRef<HTMLDivElement>(null);
+
+  // In-row filter strings
+  const [rowFilters, setRowFilters] = useState<Record<number, string>>({});
+
+  // Close search popup when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (event: MouseEvent) => {
+      if (searchContainerRef.current && !searchContainerRef.current.contains(event.target as Node)) {
+        setIsSearchOpen(false);
+      }
+    };
+    document.addEventListener('mousedown', handleClickOutside);
+    return () => {
+      document.removeEventListener('mousedown', handleClickOutside);
+    };
+  }, []);
+
+  // Filter warehouse products to ONLY those with available stock (> 0 paid or > 0 free)
+  const availableWarehouseProducts = useMemo(() => {
+    return warehouseProducts.filter(p => (p.currentStock > 0 || (p.freeStock || 0) > 0));
+  }, [warehouseProducts]);
+
+  // Matching products for quick search bar
+  const quickSearchResults = useMemo(() => {
+    const q = quickSearchQuery.trim().toLowerCase();
+    if (!q) {
+      return availableWarehouseProducts.slice(0, 10);
+    }
+    return availableWarehouseProducts.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q) ||
+      (p.category && p.category.toLowerCase().includes(q))
+    );
+  }, [availableWarehouseProducts, quickSearchQuery]);
+
+  const handleAddProductFromSearch = (product: Product) => {
+    // If there is an empty row (productId is empty), fill it
+    const emptyIndex = loadingRows.findIndex(r => !r.productId);
+    if (emptyIndex !== -1) {
+      const updated = [...loadingRows];
+      updated[emptyIndex] = { ...updated[emptyIndex], productId: product.id };
+      setLoadingRows(updated);
+    } else {
+      setLoadingRows(prev => [...prev, { productId: product.id, quantity: 0, freeQuantity: 0 }]);
+    }
+    setQuickSearchQuery('');
+    setIsSearchOpen(false);
+  };
 
   // Draft persistence
   const DRAFT_KEY = 'distributor_lorry_loading_draft';
@@ -344,7 +400,7 @@ export const LorryLoading: React.FC = () => {
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
         {/* Loading Sheet Entry Form (2 Cols) */}
         <div className="lg:col-span-2 bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 space-y-5">
-          <div className="flex items-center justify-between border-b border-slate-100 pb-4">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between border-b border-slate-100 pb-4 gap-3">
             <div>
               <h2 className="text-base font-bold text-slate-900">
                 Morning Stock Issue to {selectedLorry?.vehicleNumber}
@@ -353,39 +409,204 @@ export const LorryLoading: React.FC = () => {
                 Route: {selectedLorry?.route?.name} • Driver: {selectedLorry?.driverName}
               </p>
             </div>
-            <button
-              type="button"
-              onClick={addRow}
-              className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors"
-            >
-              <Plus className="w-3.5 h-3.5" /> Add Product Line
-            </button>
+            <div className="flex items-center gap-2">
+              <span className="px-2.5 py-1 text-xs font-semibold bg-emerald-50 text-emerald-700 border border-emerald-200/60 rounded-xl">
+                {availableWarehouseProducts.length} In-Stock Items
+              </span>
+              <button
+                type="button"
+                onClick={addRow}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-semibold text-blue-600 bg-blue-50 hover:bg-blue-100 rounded-xl transition-colors cursor-pointer"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Product Line
+              </button>
+            </div>
+          </div>
+
+          {/* Quick Search & 1-Click Add Bar */}
+          <div ref={searchContainerRef} className="relative z-20">
+            <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2 p-3 bg-gradient-to-r from-blue-50/80 via-indigo-50/40 to-slate-50 border border-blue-200/80 rounded-2xl shadow-2xs">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 text-blue-500 absolute left-3.5 top-1/2 -translate-y-1/2" />
+                <input
+                  type="text"
+                  value={quickSearchQuery}
+                  onChange={(e) => {
+                    setQuickSearchQuery(e.target.value);
+                    setIsSearchOpen(true);
+                  }}
+                  onFocus={() => setIsSearchOpen(true)}
+                  placeholder={`Search warehouse stock by name, SKU, or category to quickly add... (${availableWarehouseProducts.length} available)`}
+                  className="w-full pl-10 pr-9 py-2 bg-white border border-blue-200/90 rounded-xl text-xs sm:text-sm font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                />
+                {quickSearchQuery && (
+                  <button
+                    type="button"
+                    onClick={() => setQuickSearchQuery('')}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={() => setIsSearchOpen(prev => !prev)}
+                className="px-3 py-2 text-xs font-semibold text-blue-700 bg-white hover:bg-blue-50 border border-blue-200/80 rounded-xl transition-colors shrink-0 flex items-center justify-center gap-1.5 shadow-2xs cursor-pointer"
+              >
+                <Search className="w-3.5 h-3.5 text-blue-600" />
+                <span>{isSearchOpen ? 'Hide Search List' : 'Browse In-Stock Items'}</span>
+              </button>
+            </div>
+
+            {/* Live Search Results / Quick-Add Dropdown */}
+            {isSearchOpen && (
+              <div className="absolute left-0 right-0 top-full mt-1.5 bg-white border border-slate-200 rounded-2xl shadow-xl max-h-72 overflow-y-auto divide-y divide-slate-100 p-1.5 z-30">
+                <div className="px-3 py-1.5 text-[11px] font-bold uppercase tracking-wider text-slate-400 flex items-center justify-between">
+                  <span>
+                    {quickSearchQuery
+                      ? `Found ${quickSearchResults.length} matching in-stock items`
+                      : `Top In-Stock Items (${availableWarehouseProducts.length} Available)`}
+                  </span>
+                  <span className="text-[10px] lowercase font-normal text-slate-400">Click item to add directly</span>
+                </div>
+                {quickSearchResults.length === 0 ? (
+                  <div className="p-4 text-center text-xs text-slate-500">
+                    No in-stock warehouse products match "{quickSearchQuery}".
+                  </div>
+                ) : (
+                  quickSearchResults.map((prod) => {
+                    const isAlreadyAdded = loadingRows.some(r => r.productId === prod.id);
+                    return (
+                      <button
+                        key={prod.id}
+                        type="button"
+                        onClick={() => handleAddProductFromSearch(prod)}
+                        className="w-full text-left p-2.5 hover:bg-blue-50/70 rounded-xl transition-colors flex items-center justify-between gap-3 group cursor-pointer"
+                      >
+                        <div className="flex items-center gap-2.5 min-w-0">
+                          <div className="w-8 h-8 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 group-hover:bg-blue-100 text-slate-600 group-hover:text-blue-700">
+                            <Package className="w-4 h-4" />
+                          </div>
+                          <div className="min-w-0">
+                            <div className="flex items-center gap-2">
+                              <span className="font-mono text-[10px] font-bold bg-slate-100 px-1.5 py-0.2 rounded text-slate-700">
+                                {prod.sku}
+                              </span>
+                              <span className="text-xs font-bold text-slate-900 truncate">
+                                {prod.name}
+                              </span>
+                              {prod.category && (
+                                <span className="text-[10px] px-1.5 py-0.2 rounded bg-slate-100 text-slate-500">
+                                  {prod.category}
+                                </span>
+                              )}
+                            </div>
+                            <div className="flex items-center gap-2 mt-0.5 text-[11px]">
+                              <span className="text-slate-500 font-medium">
+                                Price: <span className="font-bold text-slate-800">{formatMoney(prod.unitPrice)}</span>
+                              </span>
+                              <span className="text-slate-300">•</span>
+                              <span className="text-blue-700 font-semibold font-mono">
+                                Regular: {prod.currentStock} {prod.unit}
+                              </span>
+                              {(prod.freeStock || 0) > 0 && (
+                                <>
+                                  <span className="text-slate-300">•</span>
+                                  <span className="text-emerald-700 font-semibold font-mono">
+                                    Free: {prod.freeStock} {prod.unit}
+                                  </span>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+
+                        <div className="flex items-center gap-2 shrink-0">
+                          {isAlreadyAdded ? (
+                            <span className="text-[10px] font-bold px-2 py-1 bg-amber-50 text-amber-700 border border-amber-200 rounded-lg">
+                              In Sheet (+Add Line)
+                            </span>
+                          ) : (
+                            <span className="text-xs font-bold text-blue-600 group-hover:text-blue-700 flex items-center gap-1 bg-blue-50 px-2.5 py-1 rounded-lg">
+                              <Plus className="w-3.5 h-3.5" /> Add
+                            </span>
+                          )}
+                        </div>
+                      </button>
+                    );
+                  })
+                )}
+              </div>
+            )}
           </div>
 
           <form onSubmit={handleConfirmLoading} className="space-y-4">
             <div className="space-y-3">
               {loadingRows.map((row, index) => {
                 const selectedProd = warehouseProducts.find(p => p.id === row.productId);
+                const rowFilterText = (rowFilters[index] || '').toLowerCase().trim();
+                
+                // Show ONLY in-stock products in the dropdown (or the currently selected item on this row)
+                const rowOptions = availableWarehouseProducts
+                  .concat(
+                    row.productId && !availableWarehouseProducts.some(p => p.id === row.productId)
+                      ? warehouseProducts.filter(p => p.id === row.productId)
+                      : []
+                  )
+                  .filter(p => {
+                    if (!rowFilterText) return true;
+                    return (
+                      p.name.toLowerCase().includes(rowFilterText) ||
+                      p.sku.toLowerCase().includes(rowFilterText) ||
+                      (p.category && p.category.toLowerCase().includes(rowFilterText)) ||
+                      p.id === row.productId
+                    );
+                  });
+
                 return (
                   <div
                     key={index}
                     className="flex flex-col sm:flex-row items-center gap-3 p-3.5 bg-slate-50 border border-slate-200/70 rounded-2xl"
                   >
-                    {/* Product Selector */}
+                    {/* Product Selector with In-Stock Filter & In-Row Search */}
                     <div className="flex-1 w-full">
-                      <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                        Select Product from Central Warehouse
-                      </label>
+                      <div className="flex items-center justify-between mb-1.5">
+                        <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                          Select Product (In-Stock Only)
+                        </label>
+                        <div className="relative w-36 sm:w-44">
+                          <Search className="w-3 h-3 text-slate-400 absolute left-2 top-1/2 -translate-y-1/2" />
+                          <input
+                            type="text"
+                            value={rowFilters[index] || ''}
+                            onChange={(e) => setRowFilters(prev => ({ ...prev, [index]: e.target.value }))}
+                            placeholder="Filter items..."
+                            className="w-full pl-6 pr-5 py-0.5 text-[11px] bg-white border border-slate-200 rounded-lg text-slate-700 placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                          />
+                          {rowFilters[index] && (
+                            <button
+                              type="button"
+                              onClick={() => setRowFilters(prev => ({ ...prev, [index]: '' }))}
+                              className="absolute right-1.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 p-0.5"
+                            >
+                              <X className="w-2.5 h-2.5" />
+                            </button>
+                          )}
+                        </div>
+                      </div>
                       <select
                         value={row.productId}
                         onChange={(e) => updateRow(index, 'productId', e.target.value)}
                         required
                         className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-medium text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
                       >
-                        <option value="">-- Choose Item to Load --</option>
-                        {warehouseProducts.map((p) => (
+                        <option value="">
+                          {rowOptions.length === 0 ? '-- No matching in-stock items found --' : '-- Choose In-Stock Item to Load --'}
+                        </option>
+                        {rowOptions.map((p) => (
                           <option key={p.id} value={p.id}>
-                            {p.sku} - {p.name} (Warehouse: {p.currentStock} paid + {p.freeStock || 0} free) - {formatMoney(p.unitPrice)}
+                            {p.sku} - {p.name} (Stock: {p.currentStock} paid + {p.freeStock || 0} free) - {formatMoney(p.unitPrice)}
                           </option>
                         ))}
                       </select>
