@@ -47,7 +47,8 @@ import {
   ArrowLeftRight,
   Lock,
   Wifi,
-  WifiOff
+  WifiOff,
+  BarChart3
 } from 'lucide-react';
 import {
   Customer,
@@ -172,7 +173,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [finishedBills, setFinishedBills] = useState<Order[]>([]);
   const [loadingFinishedBills, setLoadingFinishedBills] = useState<boolean>(false);
   const [showFinishedBillsModal, setShowFinishedBillsModal] = useState<boolean>(false);
+  const [billsViewMode, setBillsViewMode] = useState<'BILLS' | 'ITEMS'>('BILLS');
   const [billsSearch, setBillsSearch] = useState<string>('');
+  const [itemSearchQuery, setItemSearchQuery] = useState<string>('');
+  const [itemSortFilter, setItemSortFilter] = useState<'QTY_DESC' | 'REVENUE_DESC' | 'NAME'>('QTY_DESC');
   const [billsFilter, setBillsFilter] = useState<'ALL' | 'CASH' | 'CREDIT' | 'CHEQUE'>('ALL');
   const [expandedBillId, setExpandedBillId] = useState<string | null>(null);
   const [showSummaryBillModal, setShowSummaryBillModal] = useState<boolean>(false);
@@ -1180,6 +1184,99 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     };
   }, [filteredFinishedBills]);
 
+  // Item-Wise Sales Aggregation for Agent View (Filtered seamlessly by billsDateRange & billsFilter)
+  const itemWiseSalesData = useMemo(() => {
+    const map = new Map<
+      string,
+      {
+        productId: string;
+        sku: string;
+        name: string;
+        category: string;
+        unit: string;
+        unitPrice: number;
+        soldQuantity: number;
+        freeQuantity: number;
+        totalQuantity: number;
+        totalRevenue: number;
+        billsCount: number;
+      }
+    >();
+
+    dateFilteredBills.forEach((bill: Order) => {
+      if (billsFilter !== 'ALL' && bill.paymentMethod !== billsFilter) {
+        return;
+      }
+
+      bill.items?.forEach((item) => {
+        const prod = products.find((p) => p.id === item.productId) || item.product;
+        const prodId = item.productId || prod?.id || item.product?.id || 'unknown';
+        const name = prod?.name || item.product?.name || 'Unknown Item';
+        const sku = prod?.sku || item.product?.sku || 'SKU';
+        const category = prod?.category || item.product?.category || 'General';
+        const unit = prod?.unit || item.product?.unit || 'units';
+        const unitPrice = item.unitPrice || prod?.unitPrice || 0;
+        const lineTotal = item.lineTotal !== undefined ? item.lineTotal : (item.quantity * unitPrice);
+
+        const existing = map.get(prodId);
+        if (existing) {
+          existing.soldQuantity += item.quantity;
+          existing.freeQuantity += item.freeQuantity || 0;
+          existing.totalQuantity += item.quantity + (item.freeQuantity || 0);
+          existing.totalRevenue += lineTotal;
+          existing.billsCount += 1;
+        } else {
+          map.set(prodId, {
+            productId: prodId,
+            sku,
+            name,
+            category,
+            unit,
+            unitPrice,
+            soldQuantity: item.quantity,
+            freeQuantity: item.freeQuantity || 0,
+            totalQuantity: item.quantity + (item.freeQuantity || 0),
+            totalRevenue: lineTotal,
+            billsCount: 1
+          });
+        }
+      });
+    });
+
+    const allAggregated = Array.from(map.values());
+    const totalSoldUnits = allAggregated.reduce((sum, i) => sum + i.soldQuantity, 0);
+    const totalFreeUnits = allAggregated.reduce((sum, i) => sum + i.freeQuantity, 0);
+    const totalRevenue = allAggregated.reduce((sum, i) => sum + i.totalRevenue, 0);
+
+    // Apply item-specific search
+    const filtered = itemSearchQuery.trim()
+      ? allAggregated.filter((it) => {
+          const q = itemSearchQuery.toLowerCase();
+          return (
+            it.name.toLowerCase().includes(q) ||
+            it.sku.toLowerCase().includes(q) ||
+            it.category.toLowerCase().includes(q)
+          );
+        })
+      : allAggregated;
+
+    // Apply sort
+    filtered.sort((a, b) => {
+      if (itemSortFilter === 'QTY_DESC') return b.soldQuantity - a.soldQuantity;
+      if (itemSortFilter === 'REVENUE_DESC') return b.totalRevenue - a.totalRevenue;
+      return a.name.localeCompare(b.name);
+    });
+
+    return {
+      items: filtered,
+      totalSKUs: allAggregated.length,
+      filteredSKUs: filtered.length,
+      totalSoldUnits,
+      totalFreeUnits,
+      totalRevenue
+    };
+  }, [dateFilteredBills, billsFilter, itemSearchQuery, itemSortFilter, products]);
+
   // Checkout submission
   const handleFinalCheckout = async () => {
     if (isSubmittingCheckoutRef.current || submitting) {
@@ -1584,6 +1681,26 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-blue-100 text-blue-700">
               {lorryProducts.length}
             </span>
+          </button>
+
+          {/* Quick Item-Wise Sales Button with Date Filter */}
+          <button
+            type="button"
+            onClick={() => {
+              setBillsViewMode('ITEMS');
+              loadFinishedBills();
+              setShowFinishedBillsModal(true);
+            }}
+            className="flex items-center gap-1 px-2.5 sm:px-3 py-1.5 rounded-xl text-xs font-bold transition shadow-2xs active:scale-95 cursor-pointer border bg-emerald-50 text-emerald-800 border-emerald-200/90 hover:bg-emerald-100"
+            title="View Item-Wise Sales & Quantities with Date Filter"
+          >
+            <BarChart3 className="w-3.5 h-3.5 text-emerald-600" />
+            <span className="hidden xs:inline sm:inline">Item Sales</span>
+            {itemWiseSalesData.items.length > 0 && (
+              <span className="px-1.5 py-0.2 rounded-full text-[10px] font-mono font-bold bg-emerald-200/80 text-emerald-900">
+                {itemWiseSalesData.items.length}
+              </span>
+            )}
           </button>
 
           {/* Quick Barcode Scanner Icon */}
@@ -3261,27 +3378,125 @@ export const RepBilling: React.FC<RepBillingProps> = ({
               )}
             </div>
 
+            {/* View Mode Toggle: Bills Ledger vs. Item-Wise Sales Table */}
+            <div className="px-3 sm:px-5 pt-3 pb-2 bg-slate-50/90 border-b border-slate-100 flex items-center justify-between gap-2 shrink-0">
+              <div className="flex items-center p-1 bg-slate-200/80 rounded-xl w-full sm:w-auto">
+                <button
+                  type="button"
+                  onClick={() => setBillsViewMode('BILLS')}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    billsViewMode === 'BILLS'
+                      ? 'bg-white text-slate-900 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Receipt className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Bills Ledger ({filteredFinishedBills.length})</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setBillsViewMode('ITEMS')}
+                  className={`flex-1 sm:flex-initial flex items-center justify-center gap-1.5 px-3 py-1.5 rounded-lg text-xs font-bold transition cursor-pointer ${
+                    billsViewMode === 'ITEMS'
+                      ? 'bg-white text-emerald-800 shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Boxes className="w-3.5 h-3.5 text-emerald-600" />
+                  <span>Item-Wise Sales ({itemWiseSalesData.items.length} SKUs)</span>
+                </button>
+              </div>
+
+              {billsViewMode === 'ITEMS' && itemWiseSalesData.items.length > 0 && (
+                <div className="hidden sm:flex items-center gap-2 text-xs font-bold text-slate-600 shrink-0">
+                  <span>Units: <strong className="text-blue-700">{itemWiseSalesData.totalSoldUnits}</strong></span>
+                  <span>•</span>
+                  <span>Total: <strong className="text-emerald-700">{formatMoney(itemWiseSalesData.totalRevenue)}</strong></span>
+                </div>
+              )}
+            </div>
+
             {/* Filter & Search Bar */}
             <div className="p-3 sm:px-5 border-b border-slate-100 space-y-2.5 bg-white shrink-0">
-              {/* Search Bar */}
-              <div className="relative">
-                <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
-                <input
-                  type="text"
-                  value={billsSearch}
-                  onChange={(e) => setBillsSearch(e.target.value)}
-                  placeholder="Search by customer, shop, slip #, or amount..."
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                />
-                {billsSearch && (
-                  <button
-                    onClick={() => setBillsSearch('')}
-                    className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
-                  >
-                    ✕
-                  </button>
-                )}
-              </div>
+              {/* Search & Sort Bar */}
+              {billsViewMode === 'BILLS' ? (
+                <div className="relative">
+                  <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                  <input
+                    type="text"
+                    value={billsSearch}
+                    onChange={(e) => setBillsSearch(e.target.value)}
+                    placeholder="Search by customer, shop, slip #, or amount..."
+                    className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  />
+                  {billsSearch && (
+                    <button
+                      onClick={() => setBillsSearch('')}
+                      className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                    >
+                      ✕
+                    </button>
+                  )}
+                </div>
+              ) : (
+                <div className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2">
+                  <div className="relative flex-1">
+                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      value={itemSearchQuery}
+                      onChange={(e) => setItemSearchQuery(e.target.value)}
+                      placeholder="Search product name, SKU, or category..."
+                      className="w-full bg-slate-50 border border-slate-200 rounded-xl pl-9 pr-8 py-2 text-xs font-medium text-slate-800 placeholder-slate-400 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                    />
+                    {itemSearchQuery && (
+                      <button
+                        onClick={() => setItemSearchQuery('')}
+                        className="absolute right-2.5 top-2 text-slate-400 hover:text-slate-600 text-xs font-bold"
+                      >
+                        ✕
+                      </button>
+                    )}
+                  </div>
+
+                  <div className="flex items-center gap-1 shrink-0 overflow-x-auto pb-0.5">
+                    <span className="text-[10px] font-bold text-slate-400 uppercase pr-0.5">Sort:</span>
+                    <button
+                      type="button"
+                      onClick={() => setItemSortFilter('QTY_DESC')}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        itemSortFilter === 'QTY_DESC'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Qty Sold
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemSortFilter('REVENUE_DESC')}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        itemSortFilter === 'REVENUE_DESC'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      Revenue
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setItemSortFilter('NAME')}
+                      className={`px-2 py-1 rounded-lg text-[11px] font-bold transition cursor-pointer ${
+                        itemSortFilter === 'NAME'
+                          ? 'bg-emerald-600 text-white shadow-2xs'
+                          : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                      }`}
+                    >
+                      A-Z
+                    </button>
+                  </div>
+                </div>
+              )}
 
               {/* Date Range Filter Row */}
               <div className="space-y-1.5">
@@ -3388,7 +3603,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
               </div>
             </div>
 
-            {/* Finished Bills Scrollable List */}
+            {/* View Mode Content: Bills List OR Item-Wise Sales Table */}
+            {billsViewMode === 'BILLS' ? (
+              /* Finished Bills Scrollable List */
             <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-2.5 bg-slate-50/50">
               {loadingFinishedBills && finishedBills.length === 0 ? (
                 <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
@@ -3574,6 +3791,146 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 })
               )}
             </div>
+            ) : (
+              /* Item-Wise Sales Table (Clean, Mobile-optimized & responsive) */
+              <div className="flex-1 overflow-y-auto p-3 sm:p-5 space-y-3 bg-slate-50/50">
+                {/* 4 Mini Summary Stats */}
+                <div className="grid grid-cols-2 sm:grid-cols-4 gap-2">
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-slate-400 block tracking-wider">SKUs Sold</span>
+                    <span className="font-mono font-bold text-sm text-slate-900">{itemWiseSalesData.totalSKUs} Products</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-blue-600 block tracking-wider">Billed Units</span>
+                    <span className="font-mono font-bold text-sm text-blue-700">{itemWiseSalesData.totalSoldUnits} units</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-emerald-600 block tracking-wider">Free Scheme</span>
+                    <span className="font-mono font-bold text-sm text-emerald-700">+{itemWiseSalesData.totalFreeUnits} Free</span>
+                  </div>
+                  <div className="bg-white p-2.5 rounded-xl border border-slate-200/70 shadow-2xs">
+                    <span className="text-[10px] uppercase font-bold text-emerald-700 block tracking-wider">Total Sales</span>
+                    <span className="font-mono font-bold text-sm text-emerald-800">{formatMoney(itemWiseSalesData.totalRevenue)}</span>
+                  </div>
+                </div>
+
+                {loadingFinishedBills && itemWiseSalesData.items.length === 0 ? (
+                  <div className="py-12 text-center text-slate-400 text-xs flex flex-col items-center gap-2">
+                    <div className="w-5 h-5 border-2 border-emerald-600 border-t-transparent rounded-full animate-spin" />
+                    <span>Loading item-wise sales...</span>
+                  </div>
+                ) : itemWiseSalesData.items.length === 0 ? (
+                  <div className="py-12 text-center bg-white rounded-2xl border border-dashed border-slate-200 p-6 space-y-2">
+                    <Boxes className="w-8 h-8 text-slate-300 mx-auto" />
+                    <p className="text-xs font-bold text-slate-700">No item sales recorded for {billsDateRangeLabel}</p>
+                    <p className="text-[11px] text-slate-400">
+                      {itemSearchQuery || billsFilter !== 'ALL'
+                        ? 'No product matches your active search or payment filter.'
+                        : 'Products billed to customers in this date range will automatically appear here with total units and revenue.'}
+                    </p>
+                  </div>
+                ) : (
+                  <div className="bg-white rounded-2xl border border-slate-200 shadow-2xs overflow-hidden">
+                    <div className="overflow-x-auto">
+                      <table className="w-full text-left text-xs min-w-[560px]">
+                        <thead>
+                          <tr className="bg-slate-50/80 border-b border-slate-200/80 text-[10px] font-bold text-slate-500 uppercase tracking-wider">
+                            <th className="py-2.5 px-3 w-8">#</th>
+                            <th className="py-2.5 px-3">Product Name & SKU</th>
+                            <th className="py-2.5 px-2 text-right">Unit Price</th>
+                            <th className="py-2.5 px-2 text-center">Billed Qty</th>
+                            <th className="py-2.5 px-2 text-center">Free Qty</th>
+                            <th className="py-2.5 px-2 text-center">Total Units</th>
+                            <th className="py-2.5 px-3 text-right">Total Revenue</th>
+                            <th className="py-2.5 px-3 text-right">% Share</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-slate-100">
+                          {itemWiseSalesData.items.map((item, idx) => {
+                            const share = itemWiseSalesData.totalRevenue > 0
+                              ? ((item.totalRevenue / itemWiseSalesData.totalRevenue) * 100).toFixed(1)
+                              : '0.0';
+
+                            return (
+                              <tr key={item.productId} className="hover:bg-slate-50/80 transition-colors">
+                                <td className="py-2.5 px-3 text-slate-400 font-mono text-[11px]">
+                                  {idx + 1}
+                                </td>
+                                <td className="py-2.5 px-3">
+                                  <div className="font-bold text-slate-800 leading-tight">
+                                    {item.name}
+                                  </div>
+                                  <div className="flex items-center gap-1.5 mt-0.5">
+                                    <span className="font-mono text-[10px] text-slate-400">{item.sku}</span>
+                                    <span className="text-[9px] px-1 py-0.2 rounded bg-slate-100 text-slate-600 font-medium">
+                                      {item.category}
+                                    </span>
+                                  </div>
+                                </td>
+                                <td className="py-2.5 px-2 text-right font-mono text-slate-600">
+                                  {formatMoney(item.unitPrice)}
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-bold text-slate-900 font-mono">
+                                  {item.soldQuantity} <span className="text-[10px] font-normal text-slate-400">{item.unit}</span>
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-mono">
+                                  {item.freeQuantity > 0 ? (
+                                    <span className="inline-block px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800 font-bold text-[10px]">
+                                      +{item.freeQuantity}
+                                    </span>
+                                  ) : (
+                                    <span className="text-slate-300">-</span>
+                                  )}
+                                </td>
+                                <td className="py-2.5 px-2 text-center font-bold text-blue-700 font-mono">
+                                  {item.totalQuantity}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-bold font-mono text-slate-900">
+                                  {formatMoney(item.totalRevenue)}
+                                </td>
+                                <td className="py-2.5 px-3 text-right font-mono text-slate-500 text-[11px]">
+                                  <div className="inline-flex items-center gap-1">
+                                    <span>{share}%</span>
+                                    <div className="w-10 h-1.5 bg-slate-100 rounded-full overflow-hidden hidden sm:inline-block">
+                                      <div
+                                        className="h-full bg-emerald-500 rounded-full"
+                                        style={{ width: `${Math.min(100, parseFloat(share))}%` }}
+                                      />
+                                    </div>
+                                  </div>
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                        <tfoot>
+                          <tr className="bg-slate-100/80 font-bold border-t-2 border-slate-200 text-xs">
+                            <td colSpan={3} className="py-2.5 px-3 text-slate-800">
+                              TOTALS ({itemWiseSalesData.items.length} Products)
+                            </td>
+                            <td className="py-2.5 px-2 text-center text-slate-900 font-mono">
+                              {itemWiseSalesData.totalSoldUnits}
+                            </td>
+                            <td className="py-2.5 px-2 text-center text-emerald-800 font-mono">
+                              {itemWiseSalesData.totalFreeUnits > 0 ? `+${itemWiseSalesData.totalFreeUnits}` : '0'}
+                            </td>
+                            <td className="py-2.5 px-2 text-center text-blue-800 font-mono">
+                              {itemWiseSalesData.totalSoldUnits + itemWiseSalesData.totalFreeUnits}
+                            </td>
+                            <td className="py-2.5 px-3 text-right text-emerald-800 font-mono">
+                              {formatMoney(itemWiseSalesData.totalRevenue)}
+                            </td>
+                            <td className="py-2.5 px-3 text-right font-mono text-slate-600">
+                              100%
+                            </td>
+                          </tr>
+                        </tfoot>
+                      </table>
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Footer */}
             <div className="p-3 border-t border-slate-100 bg-white shrink-0 flex items-center gap-2">
@@ -3592,7 +3949,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 className="flex-1 py-2.5 bg-blue-600 hover:bg-blue-700 disabled:opacity-40 text-white text-xs font-bold rounded-xl flex items-center justify-center gap-1.5 transition cursor-pointer shadow-2xs active:scale-95"
               >
                 <Printer className="w-4 h-4" />
-                <span>Print Summary Bill</span>
+                <span>{billsViewMode === 'ITEMS' ? 'Print Item-Wise Summary' : 'Print Summary Bill'}</span>
               </button>
             </div>
           </div>
@@ -3993,6 +4350,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 <button
                   type="button"
                   onClick={() => {
+                    setBillsViewMode('BILLS');
                     loadFinishedBills();
                     setShowFinishedBillsModal(true);
                     setShowShiftHubModal(false);
@@ -4012,6 +4370,36 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       </div>
                       <p className="text-[11px] text-slate-500 mt-0.5">
                         Reprint invoices, view summary report, and verify collections
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-emerald-600 transition" />
+                </button>
+
+                {/* 3b. Item-Wise Sales Breakdown */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillsViewMode('ITEMS');
+                    loadFinishedBills();
+                    setShowFinishedBillsModal(true);
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-emerald-400 hover:bg-emerald-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-emerald-100 text-emerald-700 flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <BarChart3 className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">Item-Wise Sales & Quantities</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-emerald-100 text-emerald-800">
+                          {itemWiseSalesData.items.length} SKUs
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Breakdown of units sold, free scheme issues, and revenue per item with date filters
                       </p>
                     </div>
                   </div>
