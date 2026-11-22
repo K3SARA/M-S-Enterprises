@@ -147,6 +147,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [bankName, setBankName] = useState<string>('');
   const [chequeDate, setChequeDate] = useState<string>(() => new Date().toISOString().split('T')[0]);
   const [globalDiscountPercent] = useState<number>(0);
+  const [useReturnCredit, setUseReturnCredit] = useState<boolean>(true);
   const [notes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<Order | null>(null);
@@ -1120,10 +1121,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     return cart.reduce((sum, item) => sum + item.quantity, 0);
   }, [cart]);
 
+  const availableReturnCredit = selectedCustomer?.returnCreditBalance || 0;
+  const appliedReturnCredit = useMemo(() => {
+    if (!useReturnCredit || availableReturnCredit <= 0) return 0;
+    const discount = (cartSubtotal * (globalDiscountPercent || 0)) / 100;
+    const grossAfterDiscount = Math.max(0, cartSubtotal - discount);
+    return Math.min(availableReturnCredit, grossAfterDiscount);
+  }, [useReturnCredit, availableReturnCredit, cartSubtotal, globalDiscountPercent]);
+
   const finalTotal = useMemo(() => {
     const discount = (cartSubtotal * (globalDiscountPercent || 0)) / 100;
-    return Math.max(0, cartSubtotal - discount);
-  }, [cartSubtotal, globalDiscountPercent]);
+    return Math.max(0, cartSubtotal - discount - appliedReturnCredit);
+  }, [cartSubtotal, globalDiscountPercent, appliedReturnCredit]);
 
   // Date-filtered bills (filtered by selected date range)
   const dateFilteredBills = useMemo(() => {
@@ -1344,6 +1353,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         items: itemsPayload,
         discountAmount: (cartSubtotal * (globalDiscountPercent || 0)) / 100,
         discountPercentage: globalDiscountPercent,
+        appliedCreditAmount: appliedReturnCredit > 0 ? appliedReturnCredit : undefined,
         notes: notes.trim() || undefined,
         settlePreviousBills: previousBillsPayload,
         latitude: currentGpsCoords?.lat,
@@ -1413,6 +1423,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           chequeDate: chequeDate || null,
           subtotal: cartSubtotal,
           discountAmount: (cartSubtotal * (globalDiscountPercent || 0)) / 100,
+          appliedCreditAmount: appliedReturnCredit > 0 ? appliedReturnCredit : undefined,
           taxAmount: 0,
           netTotal: finalTotal,
           cashReceived: paymentMethod === 'CASH' ? finalTotal : 0,
@@ -1456,6 +1467,19 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       }
 
       setCheckoutSuccessOrder(createdOrder);
+
+      // Decrement customer's locally cached return credit if applied
+      if (appliedReturnCredit > 0 && selectedCustomerId) {
+        setCustomers(prev => prev.map(c => {
+          if (c.id === selectedCustomerId) {
+            return {
+              ...c,
+              returnCreditBalance: Math.max(0, (c.returnCreditBalance || 0) - appliedReturnCredit)
+            };
+          }
+          return c;
+        }));
+      }
       if (navigator.onLine) {
         await Promise.all([
           loadTargets(selectedLorryId || undefined),
@@ -2984,6 +3008,35 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       </button>
                     ))}
                   </div>
+                </div>
+              </div>
+            )}
+
+            {/* Return Credit Balance Available (1-Click Auto Deduction on Next Bill) */}
+            {availableReturnCredit > 0 && (
+              <div className="p-3 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200/90 rounded-xl space-y-2 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-1.5">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600" />
+                    <span className="text-xs font-bold text-amber-900">
+                      Return Credit Available: {formatMoney(availableReturnCredit)}
+                    </span>
+                  </div>
+                  <label className="relative inline-flex items-center cursor-pointer">
+                    <input
+                      type="checkbox"
+                      checked={useReturnCredit}
+                      onChange={(e) => setUseReturnCredit(e.target.checked)}
+                      className="sr-only peer"
+                    />
+                    <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-amber-600"></div>
+                  </label>
+                </div>
+                <div className="flex items-center justify-between text-[11px] text-amber-800 pt-1 border-t border-amber-200/60">
+                  <span>{useReturnCredit ? 'Applying credit to this bill' : 'Credit deduction disabled'}</span>
+                  <span className="font-mono font-bold">
+                    {useReturnCredit ? `-${formatMoney(appliedReturnCredit)}` : formatMoney(availableReturnCredit)}
+                  </span>
                 </div>
               </div>
             )}

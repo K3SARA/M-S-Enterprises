@@ -4233,7 +4233,12 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         discountAmount = (subtotal * discountPercentage) / 100;
       }
 
-      const netTotal = Math.max(0, subtotal - discountAmount - returnAmount);
+      const reqAppliedCredit = req.body.appliedCreditAmount !== undefined ? parseFloat(req.body.appliedCreditAmount) : 0;
+      const customerReturnCredit = customer.returnCreditBalance || 0;
+      const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
+
+      const netBeforeCredit = Math.max(0, subtotal - discountAmount - returnAmount);
+      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
 
       const isCheque = paymentMethod === 'CHEQUE';
       const paidAmount = isCheque
@@ -4296,9 +4301,12 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         }
       });
       const isPureReturn = (!Array.isArray(items) || items.length === 0) && returnAmount > 0;
+      const isExchangeOrder = Boolean(req.body.isExchangeOrder) || ((Array.isArray(items) && items.length > 0) && (Array.isArray(returnItems) && returnItems.length > 0));
       const orderNumber = isPureReturn
         ? `RET-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
-        : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
+        : (isExchangeOrder
+          ? `EXC-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
+          : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`);
 
       // 3. Create Order
       const newOrder = await tx.order.create({
@@ -4318,6 +4326,8 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           discountAmount,
           taxAmount: 0.0,
           returnAmount,
+          appliedCreditAmount,
+          isExchangeOrder,
           netTotal,
           cashReceived: isCheque ? 0 : paidAmount,
           paidAmount,
@@ -4380,7 +4390,23 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         });
       }
 
-      // 4. Update Customer Outstanding Balance if credit/unpaid on current order
+      // 4. Update Customer Return Credit Balance for Next Bill & Outstanding Due
+      if (appliedCreditAmount > 0) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { returnCreditBalance: { decrement: appliedCreditAmount } }
+        });
+      }
+
+      const billGross = Math.max(0, subtotal - discountAmount);
+      const surplusReturnCredit = Math.max(0, returnAmount - billGross);
+      if (surplusReturnCredit > 0) {
+        await tx.customer.update({
+          where: { id: customerId },
+          data: { returnCreditBalance: { increment: surplusReturnCredit } }
+        });
+      }
+
       const creditAmount = balanceAmount;
       if (creditAmount > 0) {
         await tx.customer.update({
@@ -6335,7 +6361,12 @@ app.post('/api/orders', async (req: Request, res: Response) => {
         discountAmount = (subtotal * discountPercentage) / 100;
       }
 
-      const netTotal = Math.max(0, subtotal - discountAmount - returnAmount);
+      const reqAppliedCredit = req.body.appliedCreditAmount !== undefined ? parseFloat(req.body.appliedCreditAmount) : 0;
+      const customerReturnCredit = customer.returnCreditBalance || 0;
+      const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
+
+      const netBeforeCredit = Math.max(0, subtotal - discountAmount - returnAmount);
+      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
 
       const isCheque = paymentMethod === 'CHEQUE';
       const paidAmount = isCheque
@@ -6397,9 +6428,12 @@ app.post('/api/orders', async (req: Request, res: Response) => {
         }
       });
       const isPureReturn = (!Array.isArray(items) || items.length === 0) && returnAmount > 0;
+      const isExchangeOrder = Boolean(req.body.isExchangeOrder) || ((Array.isArray(items) && items.length > 0) && (Array.isArray(returnItems) && returnItems.length > 0));
       const orderNumber = isPureReturn
         ? `RET-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
-        : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`;
+        : (isExchangeOrder
+          ? `EXC-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`
+          : `ORD-${todayStr}-${(countToday + 1).toString().padStart(4, '0')}`);
 
       const createdOrder = await tx.order.create({
         data: {
@@ -6418,6 +6452,8 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           discountAmount,
           taxAmount: 0.0,
           returnAmount,
+          appliedCreditAmount,
+          isExchangeOrder,
           netTotal,
           cashReceived: isCheque ? 0 : paidAmount,
           paidAmount,
@@ -6485,6 +6521,23 @@ app.post('/api/orders', async (req: Request, res: Response) => {
             referenceId: createdOrder.orderNumber,
             notes: `Counter Sale ${createdOrder.orderNumber} to ${customer.name}${item.freeQuantity ? ` (${item.freeQuantity} free promo)` : ''}`
           }
+        });
+      }
+
+      // Deduct applied return credit or add surplus return credit to customer's account
+      if (appliedCreditAmount > 0 && customer.code !== 'WALK-IN') {
+        await tx.customer.update({
+          where: { id: customer.id },
+          data: { returnCreditBalance: { decrement: appliedCreditAmount } }
+        });
+      }
+
+      const billGross2 = Math.max(0, subtotal - discountAmount);
+      const surplusReturnCredit2 = Math.max(0, returnAmount - billGross2);
+      if (surplusReturnCredit2 > 0 && customer.code !== 'WALK-IN') {
+        await tx.customer.update({
+          where: { id: customer.id },
+          data: { returnCreditBalance: { increment: surplusReturnCredit2 } }
         });
       }
 

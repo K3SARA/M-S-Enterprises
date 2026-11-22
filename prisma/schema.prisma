@@ -187,6 +187,7 @@ model Customer {
   discountPercentage Float    @default(0.0) // Flat discount %
   creditLimit        Float    @default(50000.0)
   outstandingBalance Float    @default(0.0) // Current credit balance
+  returnCreditBalance Float   @default(0.0) // Unredeemed return credits to apply to future bills
   maxCreditInvoices  Int      @default(1) // Max allowed unpaid bills before knock-off settlement required
 
   // Geolocation & Mapping
@@ -247,6 +248,8 @@ model Order {
   discountAmount Float @default(0.0)
   taxAmount      Float @default(0.0)
   returnAmount   Float @default(0.0) // Value of returned/damaged goods deducted from bill
+  appliedCreditAmount Float @default(0.0) // Prior return credit balance deducted from this bill
+  isExchangeOrder     Boolean @default(false) // True if order was an immediate item-for-item exchange
   netTotal       Float
   cashReceived   Float @default(0.0)
   paidAmount     Float @default(0.0) // Total amount paid against this specific bill

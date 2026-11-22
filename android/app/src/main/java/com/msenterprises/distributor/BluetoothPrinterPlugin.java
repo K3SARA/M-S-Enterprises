@@ -60,6 +60,57 @@ public class BluetoothPrinterPlugin extends Plugin {
         return true;
     }
 
+    private void requestBluetoothPermissionsNatively() {
+        if (getActivity() != null) {
+            getActivity().runOnUiThread(() -> {
+                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S) {
+                    ActivityCompat.requestPermissions(
+                        getActivity(),
+                        new String[]{
+                            Manifest.permission.BLUETOOTH_CONNECT,
+                            Manifest.permission.BLUETOOTH_SCAN
+                        },
+                        1001
+                    );
+                } else {
+                    ActivityCompat.requestPermissions(
+                        getActivity(),
+                        new String[]{
+                            Manifest.permission.BLUETOOTH,
+                            Manifest.permission.BLUETOOTH_ADMIN,
+                            Manifest.permission.ACCESS_FINE_LOCATION
+                        },
+                        1001
+                    );
+                }
+            });
+        }
+    }
+
+    @PluginMethod
+    public void requestBluetoothPermission(PluginCall call) {
+        requestBluetoothPermissionsNatively();
+        JSObject ret = new JSObject();
+        ret.put("requested", true);
+        ret.put("hasPermission", hasBluetoothPermission());
+        call.resolve(ret);
+    }
+
+    @PluginMethod
+    public void openAppSettings(PluginCall call) {
+        try {
+            Intent intent = new Intent(android.provider.Settings.ACTION_APPLICATION_DETAILS_SETTINGS);
+            intent.setData(Uri.fromParts("package", getContext().getPackageName(), null));
+            intent.addFlags(Intent.FLAG_ACTIVITY_NEW_TASK);
+            getContext().startActivity(intent);
+            JSObject ret = new JSObject();
+            ret.put("opened", true);
+            call.resolve(ret);
+        } catch (Exception e) {
+            call.reject("Could not open Android application settings: " + e.getMessage());
+        }
+    }
+
     @PluginMethod
     public void isAvailable(PluginCall call) {
         BluetoothAdapter adapter = getBluetoothAdapter();
@@ -84,7 +135,8 @@ public class BluetoothPrinterPlugin extends Plugin {
         }
 
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {
-            requestPermissionForAlias("bluetooth", call, "pairedDevicesCallback");
+            requestBluetoothPermissionsNatively();
+            call.reject("Bluetooth permission is required. Please allow 'Nearby Devices' permission on your phone screen and tap Refresh.");
             return;
         }
 
@@ -160,7 +212,8 @@ public class BluetoothPrinterPlugin extends Plugin {
     @PluginMethod
     public void printBytes(PluginCall call) {
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.S && !hasBluetoothPermission()) {
-            requestPermissionForAlias("bluetooth", call, "printBytesCallback");
+            requestBluetoothPermissionsNatively();
+            call.reject("Bluetooth permission is required. Please allow Nearby Devices permission and try again.");
             return;
         }
         doPrintBytes(call);

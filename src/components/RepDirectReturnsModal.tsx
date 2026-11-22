@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from 'react';
+import React, { useState, useEffect, useMemo } from 'react';
 import {
   X,
   RotateCcw,
@@ -12,7 +12,11 @@ import {
   ArrowRight,
   Loader2,
   PackageCheck,
-  History
+  History,
+  Tag,
+  ArrowLeftRight,
+  Package,
+  Check
 } from 'lucide-react';
 import { Customer, Lorry, Order, Product, ReturnableProduct, User } from '../types';
 import { CustomerService, LorryService } from '../services/api';
@@ -29,6 +33,16 @@ interface ReturnLine {
   returnType: 'DAMAGE' | 'RESALE';
   reason: string;
   billRef?: string;
+}
+
+interface ReplacementLine {
+  productId: string;
+  sku: string;
+  name: string;
+  unit: string;
+  quantity: number;
+  unitPrice: number;
+  availableLorryQty: number;
 }
 
 interface RepDirectReturnsModalProps {
@@ -49,6 +63,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
   customer,
   customers,
   onSelectCustomer,
+  products = [],
   lorry,
   user,
   onReturnSuccess
@@ -61,6 +76,13 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
   const [paperBillNumber, setPaperBillNumber] = useState('');
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
+
+  // Settlement method: 'NEXT_BILL_CREDIT' (Default: no replacement, amount goes to customer's next bill)
+  // or 'REPLACE_NOW' (Item-for-item / basket exchange)
+  const [settlementMethod, setSettlementMethod] = useState<'NEXT_BILL_CREDIT' | 'REPLACE_NOW'>('NEXT_BILL_CREDIT');
+  const [replacementLines, setReplacementLines] = useState<ReplacementLine[]>([]);
+  const [replacementSearch, setReplacementSearch] = useState('');
+  const [exchangePaymentMethod, setExchangePaymentMethod] = useState<'CASH' | 'CREDIT' | 'CHEQUE'>('CASH');
 
   // Returnable products state (strictly fetched from completed customer bills)
   const [returnableProducts, setReturnableProducts] = useState<ReturnableProduct[]>([]);
@@ -85,10 +107,47 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
     }
   }, [customer?.id, isOpen]);
 
+  // Available stock on lorry for replacement items
+  const lorryAvailableProducts = useMemo(() => {
+    if (!lorry?.lorryStocks) return [];
+    return lorry.lorryStocks
+      .filter(ls => ls.quantity > 0)
+      .map(ls => {
+        const p = products.find(prod => prod.id === ls.productId) || ls.product;
+        return {
+          id: ls.productId,
+          sku: p?.sku || ls.productId.slice(0, 8),
+          name: p?.name || ls.product?.name || 'Product',
+          unit: p?.unit || ls.product?.unit || 'Pcs',
+          unitPrice: p?.unitPrice || ls.product?.unitPrice || 0,
+          availableLorryQty: ls.quantity
+        };
+      })
+      .filter(p => p.availableLorryQty > 0);
+  }, [lorry?.lorryStocks, products]);
+
+  // Filtered replacement items for picker
+  const filteredReplacementProducts = useMemo(() => {
+    if (!replacementSearch.trim()) return lorryAvailableProducts;
+    const q = replacementSearch.toLowerCase().trim();
+    return lorryAvailableProducts.filter(p =>
+      p.name.toLowerCase().includes(q) ||
+      p.sku.toLowerCase().includes(q)
+    );
+  }, [lorryAvailableProducts, replacementSearch]);
+
   if (!isOpen) return null;
 
+  // Values calculation
   const totalReturnValue = returnLines.reduce((acc, line) => acc + (line.quantity * line.unitPrice), 0);
-  const totalUnits = returnLines.reduce((acc, line) => acc + line.quantity, 0);
+  const totalReturnUnits = returnLines.reduce((acc, line) => acc + line.quantity, 0);
+
+  const totalReplacementValue = replacementLines.reduce((acc, line) => acc + (line.quantity * line.unitPrice), 0);
+  const totalReplacementUnits = replacementLines.reduce((acc, line) => acc + line.quantity, 0);
+
+  // Net calculations for exchange
+  const netPayable = Math.max(0, totalReplacementValue - totalReturnValue);
+  const surplusCreditToNextBill = Math.max(0, totalReturnValue - totalReplacementValue);
 
   // Filter returnable products matching search query
   const filteredReturnables = returnableProducts.filter(rp => {
@@ -114,7 +173,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
   const handleAddReturnable = (rp: ReturnableProduct) => {
     setError(null);
     const existingIndex = returnLines.findIndex(l => l.productId === rp.productId);
-    
+
     if (existingIndex >= 0) {
       const updated = [...returnLines];
       if (updated[existingIndex].quantity + 1 > rp.maxReturnableQty) {
@@ -151,7 +210,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
     setProductSearch('');
   };
 
-  const handleUpdateQty = (index: number, delta: number) => {
+  const handleUpdateReturnQty = (index: number, delta: number) => {
     setError(null);
     const updated = [...returnLines];
     const target = updated[index];
@@ -168,7 +227,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
     setReturnLines(updated);
   };
 
-  const handleRemoveLine = (index: number) => {
+  const handleRemoveReturnLine = (index: number) => {
     const updated = [...returnLines];
     updated.splice(index, 1);
     setReturnLines(updated);
@@ -191,6 +250,58 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
     setReturnLines(updated);
   };
 
+  // Replacement items handlers
+  const handleAddReplacement = (prod: any) => {
+    setError(null);
+    const existingIndex = replacementLines.findIndex(l => l.productId === prod.id);
+    if (existingIndex >= 0) {
+      const updated = [...replacementLines];
+      if (updated[existingIndex].quantity + 1 > prod.availableLorryQty) {
+        setError(`Only ${prod.availableLorryQty} ${prod.unit} of "${prod.name}" available on lorry.`);
+        return;
+      }
+      updated[existingIndex].quantity += 1;
+      setReplacementLines(updated);
+    } else {
+      setReplacementLines([
+        ...replacementLines,
+        {
+          productId: prod.id,
+          sku: prod.sku,
+          name: prod.name,
+          unit: prod.unit,
+          quantity: 1,
+          unitPrice: prod.unitPrice,
+          availableLorryQty: prod.availableLorryQty
+        }
+      ]);
+    }
+    setReplacementSearch('');
+  };
+
+  const handleUpdateReplacementQty = (index: number, delta: number) => {
+    setError(null);
+    const updated = [...replacementLines];
+    const target = updated[index];
+    const newQty = target.quantity + delta;
+
+    if (newQty <= 0) {
+      updated.splice(index, 1);
+    } else if (newQty > target.availableLorryQty) {
+      setError(`Cannot load more than ${target.availableLorryQty} ${target.unit} of "${target.name}" available on lorry.`);
+      return;
+    } else {
+      target.quantity = newQty;
+    }
+    setReplacementLines(updated);
+  };
+
+  const handleRemoveReplacementLine = (index: number) => {
+    const updated = [...replacementLines];
+    updated.splice(index, 1);
+    setReplacementLines(updated);
+  };
+
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!customer) {
@@ -198,7 +309,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
       return;
     }
     if (returnLines.length === 0) {
-      setError('Please add at least one return product from the customer\'s completed bills.');
+      setError('Please add at least one returned product from completed bills.');
       return;
     }
     if (!lorry?.id) {
@@ -206,14 +317,28 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
       return;
     }
 
+    if (settlementMethod === 'REPLACE_NOW' && replacementLines.length === 0) {
+      setError('Please select at least one replacement item from lorry stock, or choose "Credit to Next Bill".');
+      return;
+    }
+
     try {
       setLoading(true);
       setError(null);
 
-      const payload = {
+      const isExchange = settlementMethod === 'REPLACE_NOW' && replacementLines.length > 0;
+
+      const payload: any = {
         customerId: customer.id,
         paperBillNumber: paperBillNumber.trim() || undefined,
-        items: [], // Pure returns collection without sales
+        items: isExchange
+          ? replacementLines.map(l => ({
+              productId: l.productId,
+              quantity: l.quantity,
+              freeQuantity: 0,
+              unitPrice: l.unitPrice
+            }))
+          : [],
         returnItems: returnLines.map(line => ({
           productId: line.productId,
           quantity: line.quantity,
@@ -221,9 +346,12 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
           returnType: line.returnType,
           reason: line.reason
         })),
-        paymentMethod: 'CASH' as const,
-        cashReceived: 0,
-        notes: `Direct Return Collection (${user?.fullName || lorry?.driverName || 'Rep'})`
+        paymentMethod: netPayable > 0 ? exchangePaymentMethod : 'CASH',
+        cashReceived: netPayable > 0 && exchangePaymentMethod === 'CASH' ? netPayable : 0,
+        isExchangeOrder: isExchange,
+        notes: isExchange
+          ? `Item Exchange (${user?.fullName || lorry?.driverName || 'Rep'})${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
+          : `Direct Return Credit Note (${user?.fullName || lorry?.driverName || 'Rep'}) - To Next Bill${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
       };
 
       const createdOrder = await LorryService.enterDriverBill(lorry.id, payload);
@@ -231,7 +359,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
       onReturnSuccess(createdOrder);
       onClose();
     } catch (err: any) {
-      setError(err.response?.data?.error || err.message || 'Failed to submit return collection.');
+      setError(err.response?.data?.error || err.message || 'Failed to submit return.');
     } finally {
       setLoading(false);
     }
@@ -247,19 +375,19 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
         </div>
 
         {/* Minimal Header */}
-        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/60">
+        <div className="px-5 py-3.5 border-b border-slate-100 flex items-center justify-between bg-slate-50/70">
           <div className="flex items-center gap-2.5">
             <div className="w-9 h-9 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center shadow-2xs">
               <RotateCcw className="w-5 h-5 stroke-[2.2]" />
             </div>
             <div>
               <h2 className="text-sm font-bold text-slate-900 flex items-center gap-1.5">
-                <span>Direct Returns Collection</span>
+                <span>Direct Returns & Exchanges</span>
                 <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-amber-100 text-amber-800 uppercase tracking-wider">
-                  Credit Note
+                  Field Slip
                 </span>
               </h2>
-              <p className="text-[11px] text-slate-500">Collect returns only from completed customer bills</p>
+              <p className="text-[11px] text-slate-500">Return damage/good items for replacement or next-bill credit</p>
             </div>
           </div>
           <button
@@ -272,7 +400,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
         </div>
 
         {/* Form Body */}
-        <form onSubmit={handleSubmit} className="p-5 overflow-y-auto space-y-4 flex-1">
+        <form onSubmit={handleSubmit} className="p-4 sm:p-5 overflow-y-auto space-y-4 flex-1">
           
           {error && (
             <div className="p-3 bg-rose-50 border border-rose-200 rounded-xl flex items-center gap-2 text-rose-800 text-xs font-semibold animate-fadeIn">
@@ -307,9 +435,9 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                       <div className="font-bold text-slate-900">{c.name}</div>
                       <div className="text-[10px] text-slate-400">{c.code || c.phone || 'Customer'}</div>
                     </div>
-                    {c.outstandingBalance > 0 && (
-                      <span className="font-mono text-[11px] font-bold text-rose-600">
-                        Due: {formatMoney(c.outstandingBalance)}
+                    {(c.returnCreditBalance || 0) > 0 && (
+                      <span className="font-mono text-[10px] font-bold text-emerald-700 bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                        Credit: {formatMoney(c.returnCreditBalance || 0)}
                       </span>
                     )}
                   </button>
@@ -317,7 +445,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
               </div>
             </div>
           ) : (
-            <div className="p-3 rounded-2xl bg-amber-50/50 border border-amber-200/70 flex items-center justify-between">
+            <div className="p-3 rounded-2xl bg-amber-50/60 border border-amber-200/80 flex items-center justify-between">
               <div>
                 <div className="flex items-center gap-1.5">
                   <span className="text-xs font-bold text-slate-900">{customer.name}</span>
@@ -330,21 +458,21 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                 </div>
               </div>
               <div className="text-right">
-                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Current Due</div>
-                <div className="text-xs font-bold font-mono text-slate-700">
-                  {formatMoney(customer.outstandingBalance || 0)}
+                <div className="text-[10px] font-bold uppercase tracking-wider text-slate-400">Next Bill Credit</div>
+                <div className="text-xs font-bold font-mono text-emerald-700">
+                  {formatMoney(customer.returnCreditBalance || 0)}
                 </div>
               </div>
             </div>
           )}
 
-          {/* Section: Select Eligible Purchased Products */}
+          {/* Section 1: Select Eligible Returned Products */}
           {customer && (
             <div className="space-y-2">
               <div className="flex items-center justify-between">
                 <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider flex items-center gap-1.5">
                   <PackageCheck className="w-3.5 h-3.5 text-amber-600" />
-                  <span>Purchased Products (Completed Bills)</span>
+                  <span>1. Select Return Items (Damage / Good)</span>
                 </label>
                 {returnableProducts.length > 0 && (
                   <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 text-emerald-700 border border-emerald-200/60">
@@ -354,34 +482,34 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
               </div>
 
               {loadingReturnables ? (
-                <div className="p-6 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-2">
-                  <Loader2 className="w-5 h-5 animate-spin mx-auto text-amber-600" />
+                <div className="p-5 text-center bg-slate-50 border border-slate-200 rounded-2xl space-y-1.5">
+                  <Loader2 className="w-4 h-4 animate-spin mx-auto text-amber-600" />
                   <p className="text-xs text-slate-500">Checking completed bills for {customer.name}...</p>
                 </div>
               ) : returnableProducts.length === 0 ? (
-                <div className="p-5 text-center bg-amber-50/40 border border-dashed border-amber-200 rounded-2xl space-y-1.5">
-                  <History className="w-6 h-6 mx-auto text-amber-500" />
-                  <p className="text-xs font-bold text-amber-900">No completed bills found</p>
-                  <p className="text-[11px] text-amber-700 max-w-sm mx-auto">
-                    This customer has no past delivered bills. Only products previously purchased in completed bills can be returned.
+                <div className="p-4 text-center bg-amber-50/40 border border-dashed border-amber-200 rounded-2xl space-y-1">
+                  <History className="w-5 h-5 mx-auto text-amber-500" />
+                  <p className="text-xs font-bold text-amber-900">No past purchase history</p>
+                  <p className="text-[11px] text-amber-700">
+                    Only products previously purchased in delivered bills can be returned.
                   </p>
                 </div>
               ) : (
                 <div className="space-y-2">
                   {/* Search within purchased items */}
                   <div className="relative">
-                    <Search className="w-4 h-4 absolute left-3 top-2.5 text-slate-400" />
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
                     <input
                       type="text"
                       placeholder="Search purchased items by name or SKU..."
                       value={productSearch}
                       onChange={e => setProductSearch(e.target.value)}
-                      className="w-full pl-9 pr-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-2 focus:ring-amber-500"
+                      className="w-full pl-9 pr-3 py-1.5 bg-slate-50 border border-slate-200 rounded-xl text-xs font-medium focus:bg-white focus:outline-none focus:ring-1 focus:ring-amber-500"
                     />
                   </div>
 
                   {/* Purchased Items List */}
-                  <div className="border border-slate-200 rounded-2xl bg-white divide-y divide-slate-100 max-h-48 overflow-y-auto shadow-2xs">
+                  <div className="border border-slate-200 rounded-2xl bg-white divide-y divide-slate-100 max-h-40 overflow-y-auto shadow-2xs">
                     {filteredReturnables.length === 0 ? (
                       <div className="p-3 text-center text-xs text-slate-400">No matching purchased items</div>
                     ) : (
@@ -438,7 +566,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                                     : 'bg-amber-100 text-amber-800 hover:bg-amber-200 cursor-pointer'
                                 }`}
                               >
-                                {isMaxed ? 'Max In List' : isZeroAvailable ? 'Fully Returned' : '+ Return'}
+                                {isMaxed ? 'Maxed' : isZeroAvailable ? 'Returned' : '+ Add'}
                               </button>
                             </div>
                           </div>
@@ -451,44 +579,35 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
             </div>
           )}
 
-          {/* Return Lines List */}
-          {returnLines.length > 0 ? (
-            <div className="space-y-2.5">
+          {/* Return Lines Selected */}
+          {returnLines.length > 0 && (
+            <div className="space-y-2">
               <div className="text-[11px] font-bold text-slate-500 uppercase tracking-wider flex items-center justify-between">
-                <span>Items Selected for Return ({returnLines.length})</span>
-                <span className="text-amber-700">{totalUnits} units total</span>
+                <span>Selected Items for Return ({returnLines.length})</span>
+                <span className="font-mono font-bold text-amber-700">Total: {formatMoney(totalReturnValue)}</span>
               </div>
 
-              <div className="space-y-2 max-h-56 overflow-y-auto pr-0.5">
+              <div className="space-y-2 max-h-48 overflow-y-auto pr-0.5">
                 {returnLines.map((line, idx) => (
                   <div key={line.productId} className="p-3 rounded-2xl bg-slate-50 border border-slate-200/80 space-y-2">
-                    
-                    {/* Top Row: Name, SKU, Remove */}
                     <div className="flex items-start justify-between gap-2">
                       <div className="min-w-0">
                         <div className="text-xs font-bold text-slate-900 truncate">{line.name}</div>
                         <div className="flex items-center gap-2 text-[10px] font-mono text-slate-400 mt-0.5">
                           <span>{line.sku}</span>
-                          {line.billRef && (
-                            <>
-                              <span>•</span>
-                              <span className="text-blue-600">Bill: {line.billRef}</span>
-                            </>
-                          )}
                           <span>•</span>
-                          <span className="text-amber-700">Max: {line.maxReturnableQty}</span>
+                          <span className="text-amber-700 font-medium">Max: {line.maxReturnableQty}</span>
                         </div>
                       </div>
                       <button
                         type="button"
-                        onClick={() => handleRemoveLine(idx)}
+                        onClick={() => handleRemoveReturnLine(idx)}
                         className="p-1 text-slate-400 hover:text-rose-600 transition cursor-pointer"
                       >
                         <Trash2 className="w-3.5 h-3.5" />
                       </button>
                     </div>
 
-                    {/* Middle Row: Return Condition & Stepper */}
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       {/* Condition Pill */}
                       <div className="flex items-center gap-1 p-0.5 bg-slate-200/70 rounded-lg text-[10px] font-bold">
@@ -512,7 +631,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                               : 'text-slate-600 hover:text-slate-900'
                           }`}
                         >
-                          ✨ Resale
+                          ✨ Good Resale
                         </button>
                       </div>
 
@@ -520,7 +639,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                       <div className="flex items-center gap-1.5 bg-white border border-slate-200 rounded-xl px-2 py-0.5">
                         <button
                           type="button"
-                          onClick={() => handleUpdateQty(idx, -1)}
+                          onClick={() => handleUpdateReturnQty(idx, -1)}
                           className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-900 font-bold cursor-pointer"
                         >
                           -
@@ -530,7 +649,7 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                         </span>
                         <button
                           type="button"
-                          onClick={() => handleUpdateQty(idx, 1)}
+                          onClick={() => handleUpdateReturnQty(idx, 1)}
                           className="w-5 h-5 flex items-center justify-center text-slate-500 hover:text-slate-900 font-bold cursor-pointer"
                         >
                           +
@@ -560,68 +679,282 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                         </button>
                       ))}
                     </div>
-
                   </div>
                 ))}
               </div>
             </div>
-          ) : (
-            <div className="p-6 text-center border-2 border-dashed border-slate-200 rounded-2xl">
-              <RotateCcw className="w-8 h-8 mx-auto text-slate-300 mb-2" />
-              <p className="text-xs font-semibold text-slate-600">No return products selected</p>
-              <p className="text-[10px] text-slate-400 mt-0.5">
-                {customer ? 'Choose items from the completed bills list above' : 'Select a customer shop to view their eligible items'}
-              </p>
+          )}
+
+          {/* Section 2: Settlement Method Switcher (Ultra Neat & Clean) */}
+          {returnLines.length > 0 && (
+            <div className="space-y-3 pt-1">
+              <label className="text-[11px] font-bold text-slate-600 uppercase tracking-wider block">
+                2. Choose Settlement Method
+              </label>
+
+              <div className="grid grid-cols-2 gap-2 bg-slate-100 p-1 rounded-2xl">
+                <button
+                  type="button"
+                  onClick={() => setSettlementMethod('NEXT_BILL_CREDIT')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    settlementMethod === 'NEXT_BILL_CREDIT'
+                      ? 'bg-white text-amber-950 shadow-2xs font-extrabold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <Tag className="w-3.5 h-3.5 text-amber-600" />
+                  <span>Credit to Next Bill</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setSettlementMethod('REPLACE_NOW')}
+                  className={`py-2 px-3 rounded-xl text-xs font-bold transition flex items-center justify-center gap-1.5 cursor-pointer ${
+                    settlementMethod === 'REPLACE_NOW'
+                      ? 'bg-white text-blue-950 shadow-2xs font-extrabold'
+                      : 'text-slate-600 hover:text-slate-900'
+                  }`}
+                >
+                  <ArrowLeftRight className="w-3.5 h-3.5 text-blue-600" />
+                  <span>Replace with Items</span>
+                </button>
+              </div>
+
+              {/* View A: Credit to Next Bill */}
+              {settlementMethod === 'NEXT_BILL_CREDIT' && (
+                <div className="p-3.5 rounded-2xl bg-gradient-to-r from-amber-50 via-orange-50/50 to-slate-50 border border-amber-200/90 space-y-2">
+                  <div className="flex items-center justify-between">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-xl bg-amber-100 text-amber-700 flex items-center justify-center font-bold text-sm">
+                        🏷️
+                      </div>
+                      <div>
+                        <span className="text-xs font-bold text-amber-950 block">
+                          No replacement item available now?
+                        </span>
+                        <span className="text-[11px] text-amber-800">
+                          Total return value of <strong>{formatMoney(totalReturnValue)}</strong> goes to next bill.
+                        </span>
+                      </div>
+                    </div>
+                  </div>
+                  <div className="text-[11px] text-amber-800 bg-white/80 p-2.5 rounded-xl border border-amber-200/60 flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-amber-600 shrink-0" />
+                    <span>When creating this customer's next delivery bill, a 1-click credit discount banner will appear automatically!</span>
+                  </div>
+                </div>
+              )}
+
+              {/* View B: Replace with Items Now (Item-for-Item Exchange) */}
+              {settlementMethod === 'REPLACE_NOW' && (
+                <div className="space-y-3 p-3.5 bg-blue-50/50 border border-blue-200/80 rounded-2xl">
+                  <div className="flex items-center justify-between">
+                    <span className="text-xs font-bold text-blue-950 flex items-center gap-1.5">
+                      <Package className="w-3.5 h-3.5 text-blue-600" />
+                      <span>Select Replacement from Lorry Stock</span>
+                    </span>
+                    <span className="text-[10px] font-mono text-blue-700 bg-blue-100 px-2 py-0.5 rounded-md font-bold">
+                      {lorryAvailableProducts.length} In Lorry
+                    </span>
+                  </div>
+
+                  {/* Lorry Search */}
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-3 top-2.5 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Search available replacement items on lorry..."
+                      value={replacementSearch}
+                      onChange={e => setReplacementSearch(e.target.value)}
+                      className="w-full pl-8 pr-3 py-1.5 bg-white border border-blue-200 rounded-xl text-xs placeholder-slate-400 focus:outline-none focus:ring-1 focus:ring-blue-500"
+                    />
+                  </div>
+
+                  {/* Available Lorry Items List */}
+                  <div className="border border-blue-200/80 rounded-xl bg-white divide-y divide-slate-100 max-h-36 overflow-y-auto">
+                    {filteredReplacementProducts.length === 0 ? (
+                      <div className="p-3 text-center text-xs text-slate-400">
+                        No in-stock replacement items found on lorry
+                      </div>
+                    ) : (
+                      filteredReplacementProducts.map(prod => {
+                        const inList = replacementLines.find(l => l.productId === prod.id);
+                        const isMaxed = inList && inList.quantity >= prod.availableLorryQty;
+                        return (
+                          <div
+                            key={prod.id}
+                            onClick={() => {
+                              if (!isMaxed) handleAddReplacement(prod);
+                            }}
+                            className={`p-2 px-3 flex items-center justify-between text-xs transition ${
+                              isMaxed ? 'bg-slate-50 opacity-60 cursor-not-allowed' : 'hover:bg-blue-50/70 cursor-pointer'
+                            }`}
+                          >
+                            <div className="min-w-0 pr-2">
+                              <span className="font-semibold text-slate-800 truncate block">{prod.name}</span>
+                              <span className="text-[10px] text-slate-400 font-mono">Stock: {prod.availableLorryQty} {prod.unit}</span>
+                            </div>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <span className="font-mono font-bold text-slate-700 text-xs">{formatMoney(prod.unitPrice)}</span>
+                              <button
+                                type="button"
+                                disabled={isMaxed}
+                                className={`px-2 py-0.5 rounded-md text-[10px] font-bold ${
+                                  isMaxed ? 'bg-slate-200 text-slate-500' : 'bg-blue-50 text-blue-700 hover:bg-blue-100'
+                                }`}
+                              >
+                                {isMaxed ? 'Loaded' : '+ Swap'}
+                              </button>
+                            </div>
+                          </div>
+                        );
+                      })
+                    )}
+                  </div>
+
+                  {/* Chosen Replacement Lines */}
+                  {replacementLines.length > 0 && (
+                    <div className="space-y-1.5 pt-1">
+                      <span className="text-[10px] font-bold text-slate-500 uppercase tracking-wider block">
+                        Replacement Items ({replacementLines.length})
+                      </span>
+                      <div className="space-y-1.5 max-h-32 overflow-y-auto pr-0.5">
+                        {replacementLines.map((rep, idx) => (
+                          <div key={rep.productId} className="p-2 bg-white border border-slate-200 rounded-xl flex items-center justify-between gap-2 text-xs">
+                            <span className="font-semibold text-slate-800 truncate">{rep.name}</span>
+                            <div className="flex items-center gap-2 shrink-0">
+                              <div className="flex items-center gap-1.5 bg-slate-50 border border-slate-200 rounded-lg px-1.5 py-0.5">
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateReplacementQty(idx, -1)}
+                                  className="w-4 h-4 flex items-center justify-center text-slate-500 font-bold"
+                                >
+                                  -
+                                </button>
+                                <span className="font-mono font-bold text-xs">{rep.quantity}</span>
+                                <button
+                                  type="button"
+                                  onClick={() => handleUpdateReplacementQty(idx, 1)}
+                                  className="w-4 h-4 flex items-center justify-center text-slate-500 font-bold"
+                                >
+                                  +
+                                </button>
+                              </div>
+                              <span className="font-mono font-bold text-slate-900">{formatMoney(rep.quantity * rep.unitPrice)}</span>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveReplacementLine(idx)}
+                                className="text-slate-400 hover:text-rose-600 p-0.5"
+                              >
+                                <X className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+
+                  {/* Live Exchange Calculation Card */}
+                  <div className="p-3 bg-white border border-slate-200/90 rounded-xl space-y-1.5 text-xs shadow-2xs">
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total Returned Goods Value:</span>
+                      <span className="font-mono font-bold text-amber-700">-{formatMoney(totalReturnValue)}</span>
+                    </div>
+                    <div className="flex justify-between text-slate-600">
+                      <span>Total Replacement Items:</span>
+                      <span className="font-mono font-bold text-blue-700">+{formatMoney(totalReplacementValue)}</span>
+                    </div>
+                    <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center font-bold">
+                      <span className="text-slate-800">Exchange Net Settlement:</span>
+                      {netPayable === 0 && surplusCreditToNextBill === 0 ? (
+                        <span className="px-2 py-0.5 bg-emerald-100 text-emerald-800 rounded-md text-[11px] font-bold">
+                          Even Item Swap (Rs. 0.00)
+                        </span>
+                      ) : netPayable > 0 ? (
+                        <span className="text-rose-600 font-mono font-bold">
+                          Customer to Pay: {formatMoney(netPayable)}
+                        </span>
+                      ) : (
+                        <span className="text-emerald-700 font-mono font-bold text-[11px] bg-emerald-50 border border-emerald-200 px-2 py-0.5 rounded-md">
+                          Surplus to Next Bill: {formatMoney(surplusCreditToNextBill)}
+                        </span>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Payment selector if customer owes difference */}
+                  {netPayable > 0 && (
+                    <div className="space-y-1 pt-1">
+                      <label className="text-[10px] font-bold text-slate-500 uppercase">Payment for Net Difference</label>
+                      <div className="grid grid-cols-3 gap-1">
+                        {(['CASH', 'CREDIT', 'CHEQUE'] as const).map(m => (
+                          <button
+                            key={m}
+                            type="button"
+                            onClick={() => setExchangePaymentMethod(m)}
+                            className={`py-1.5 rounded-lg text-xs font-bold transition ${
+                              exchangePaymentMethod === m
+                                ? 'bg-blue-600 text-white shadow-xs'
+                                : 'bg-white border border-slate-200 text-slate-600'
+                            }`}
+                          >
+                            {m}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
           )}
 
-          {/* Optional Slip / Reference Number */}
-          <div>
-            <label className="text-[10px] font-bold text-slate-400 uppercase">Physical Slip / Book # (Optional)</label>
-            <input
-              type="text"
-              placeholder="e.g. RET-0042"
-              value={paperBillNumber}
-              onChange={e => setPaperBillNumber(e.target.value)}
-              className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-medium focus:bg-white focus:outline-none"
-            />
-          </div>
-
-          {/* Credit Summary Card */}
+          {/* Reference Book / Paper Slip (Optional) */}
           {returnLines.length > 0 && (
-            <div className="p-3.5 bg-gradient-to-r from-amber-50 to-orange-50 border border-amber-200 rounded-2xl flex items-center justify-between">
-              <div>
-                <div className="text-[10px] font-bold uppercase tracking-wider text-amber-900">Total Return Credit</div>
-                <div className="text-[11px] text-amber-700 mt-0.5">
-                  Deducts automatically from shop's pending balance
-                </div>
-              </div>
-              <div className="text-lg font-black font-mono text-amber-900">
-                {formatMoney(totalReturnValue)}
-              </div>
+            <div>
+              <label className="text-[10px] font-bold text-slate-400 uppercase">Physical Slip / Book # (Optional)</label>
+              <input
+                type="text"
+                placeholder="e.g. RET-0042 / EXC-012"
+                value={paperBillNumber}
+                onChange={e => setPaperBillNumber(e.target.value)}
+                className="w-full px-3 py-2 bg-slate-50 border border-slate-200 rounded-xl text-xs font-mono font-medium focus:bg-white focus:outline-none"
+              />
             </div>
           )}
 
           {/* Submit Action Button */}
-          <button
-            type="submit"
-            disabled={loading || returnLines.length === 0}
-            className={`w-full py-3 rounded-2xl text-xs font-bold text-white shadow-sm flex items-center justify-center gap-2 transition active:scale-[0.98] ${
-              loading || returnLines.length === 0
-                ? 'bg-slate-300 cursor-not-allowed'
-                : 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 cursor-pointer'
-            }`}
-          >
-            {loading ? (
-              <span>Recording Returns...</span>
-            ) : (
-              <>
-                <Receipt className="w-4 h-4" />
-                <span>Confirm Returns • {formatMoney(totalReturnValue)}</span>
-                <ArrowRight className="w-3.5 h-3.5" />
-              </>
-            )}
-          </button>
+          {returnLines.length > 0 && (
+            <button
+              type="submit"
+              disabled={loading || returnLines.length === 0}
+              className={`w-full py-3 rounded-2xl text-xs font-bold text-white shadow-sm flex items-center justify-center gap-2 transition active:scale-[0.98] ${
+                loading || returnLines.length === 0
+                  ? 'bg-slate-300 cursor-not-allowed'
+                  : settlementMethod === 'REPLACE_NOW'
+                  ? 'bg-blue-600 hover:bg-blue-700 shadow-blue-500/20 cursor-pointer'
+                  : 'bg-amber-600 hover:bg-amber-700 shadow-amber-500/20 cursor-pointer'
+              }`}
+            >
+              {loading ? (
+                <span>Processing...</span>
+              ) : settlementMethod === 'REPLACE_NOW' ? (
+                <>
+                  <ArrowLeftRight className="w-4 h-4" />
+                  <span>
+                    Confirm Exchange • {netPayable > 0 ? `Pay ${formatMoney(netPayable)}` : 'Complete Swap'}
+                  </span>
+                  <Check className="w-4 h-4" />
+                </>
+              ) : (
+                <>
+                  <Tag className="w-4 h-4" />
+                  <span>Issue Next-Bill Credit • {formatMoney(totalReturnValue)}</span>
+                  <ArrowRight className="w-3.5 h-3.5" />
+                </>
+              )}
+            </button>
+          )}
 
         </form>
 

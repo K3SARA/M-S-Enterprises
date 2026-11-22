@@ -286,9 +286,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               {/* Header Double Divider */}
               <div className="border-t-2 border-black my-1.5" />
               <div className="text-center font-bold text-[11px] py-0.5 tracking-wider">
-                {activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
-                  ? '*** GOODS RETURN CREDIT VOUCHER ***'
-                  : '*** SALES BILL / DELIVERY SLIP ***'}
+                {activeOrder.isExchangeOrder || (items.length > 0 && returns.length > 0)
+                  ? '*** GOODS RETURN & EXCHANGE SLIP ***'
+                  : (activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
+                    ? '*** GOODS RETURN CREDIT VOUCHER ***'
+                    : '*** SALES BILL / DELIVERY SLIP ***')}
               </div>
               <div className="border-t border-black border-dashed my-1.5" />
 
@@ -433,6 +435,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   </div>
                 )}
 
+                {activeOrder.appliedCreditAmount !== undefined && activeOrder.appliedCreditAmount > 0 && (
+                  <div className="flex justify-between font-bold text-amber-800">
+                    <span>Prior Return Credit:</span>
+                    <span>-{formatMoney(activeOrder.appliedCreditAmount)}</span>
+                  </div>
+                )}
+
                 <div className="border-t-2 border-black my-1" />
                 <div className="flex justify-between text-xs font-black py-0.5">
                   <span>NET TOTAL:</span>
@@ -526,9 +535,11 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
               <div className="flex flex-col sm:flex-row justify-between items-start gap-3 border-b border-slate-200 pb-4">
                 <div>
                   <h2 className="text-xl font-bold tracking-tight text-slate-900">
-                    {activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
-                      ? 'GOODS RETURN CREDIT NOTE'
-                      : 'DISTRIBUTION SALES BILL'}
+                    {activeOrder.isExchangeOrder || (items.length > 0 && returns.length > 0)
+                      ? 'GOODS RETURN & EXCHANGE SLIP'
+                      : (activeOrder.orderNumber?.startsWith('RET-') || (items.length === 0 && returns.length > 0)
+                        ? 'GOODS RETURN CREDIT NOTE'
+                        : 'DISTRIBUTION SALES BILL')}
                   </h2>
                   <div className="flex flex-wrap items-center gap-2 text-xs font-mono text-slate-500 mt-1">
                     <span>System Ref: {activeOrder.orderNumber}</span>
@@ -738,6 +749,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <div className="flex justify-between text-rose-600 font-medium">
                       <span>Returns / Damages:</span>
                       <span className="font-mono">-{formatMoney(activeOrder.returnAmount)}</span>
+                    </div>
+                  )}
+                  {activeOrder.appliedCreditAmount !== undefined && activeOrder.appliedCreditAmount > 0 && (
+                    <div className="flex justify-between text-amber-700 font-medium">
+                      <span>Prior Return Credit Applied:</span>
+                      <span className="font-mono">-{formatMoney(activeOrder.appliedCreditAmount)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-bold text-slate-900 border-t border-slate-200 pt-1.5">

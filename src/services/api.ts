@@ -165,6 +165,8 @@ export const LorryService = {
     cashReceived: number;
     discountAmount?: number;
     discountPercentage?: number;
+    appliedCreditAmount?: number;
+    isExchangeOrder?: boolean;
     notes?: string;
     chequeNumber?: string;
     bankName?: string;
@@ -270,6 +272,8 @@ export const OrderService = {
     cashReceived?: number;
     discountAmount?: number;
     discountPercentage?: number;
+    appliedCreditAmount?: number;
+    isExchangeOrder?: boolean;
     notes?: string;
     chequeNumber?: string;
     bankName?: string;

@@ -39,6 +39,32 @@ export const BluetoothPrinterModal: React.FC<BluetoothPrinterModalProps> = ({
   });
   const [printing, setPrinting] = useState(false);
   const [printSuccess, setPrintSuccess] = useState(false);
+  const [needsPermission, setNeedsPermission] = useState(false);
+
+  const requestPermission = async () => {
+    try {
+      if (NativeBluetoothPrinter.requestBluetoothPermission) {
+        await NativeBluetoothPrinter.requestBluetoothPermission();
+      } else if (NativeBluetoothPrinter.requestPermissions) {
+        await NativeBluetoothPrinter.requestPermissions();
+      }
+      setTimeout(() => {
+        fetchDevices();
+      }, 500);
+    } catch (e: any) {
+      console.warn('Could not request permission:', e);
+    }
+  };
+
+  const handleOpenSettings = async () => {
+    try {
+      if (NativeBluetoothPrinter.openAppSettings) {
+        await NativeBluetoothPrinter.openAppSettings();
+      }
+    } catch (e: any) {
+      console.warn('Could not open settings:', e);
+    }
+  };
 
   const fetchDevices = async () => {
     if (!Capacitor.isNativePlatform()) {
@@ -48,6 +74,7 @@ export const BluetoothPrinterModal: React.FC<BluetoothPrinterModalProps> = ({
 
     setLoading(true);
     setError(null);
+    setNeedsPermission(false);
     try {
       const avail = await NativeBluetoothPrinter.isAvailable();
       if (!avail.supported) {
@@ -61,9 +88,21 @@ export const BluetoothPrinterModal: React.FC<BluetoothPrinterModalProps> = ({
         return;
       }
 
+      if (!avail.hasPermission) {
+        setNeedsPermission(true);
+        try {
+          if (NativeBluetoothPrinter.requestBluetoothPermission) {
+            await NativeBluetoothPrinter.requestBluetoothPermission();
+          } else if (NativeBluetoothPrinter.requestPermissions) {
+            await NativeBluetoothPrinter.requestPermissions();
+          }
+        } catch {}
+      }
+
       const res = await NativeBluetoothPrinter.getPairedDevices();
       const list = res.devices || [];
       setDevices(list);
+      setNeedsPermission(false);
 
       // Auto-select if last used matches or if only 1 printer found
       const last = getLastUsedPrinter();
@@ -79,7 +118,11 @@ export const BluetoothPrinterModal: React.FC<BluetoothPrinterModalProps> = ({
       }
     } catch (err: any) {
       console.error('Failed to fetch Bluetooth devices:', err);
-      setError(err?.message || 'Failed to scan paired Bluetooth devices.');
+      const msg = err?.message || 'Failed to scan paired Bluetooth devices.';
+      setError(msg);
+      if (msg.toLowerCase().includes('permission')) {
+        setNeedsPermission(true);
+      }
     } finally {
       setLoading(false);
     }
@@ -251,9 +294,29 @@ export const BluetoothPrinterModal: React.FC<BluetoothPrinterModalProps> = ({
 
         {/* Status / Error Message */}
         {error && (
-          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs flex items-center gap-2">
-            <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
-            <span className="leading-tight">{error}</span>
+          <div className="p-2.5 rounded-xl bg-rose-50 border border-rose-200 text-rose-800 text-xs space-y-2">
+            <div className="flex items-center gap-2">
+              <AlertCircle className="w-4 h-4 text-rose-600 shrink-0" />
+              <span className="leading-tight">{error}</span>
+            </div>
+            {needsPermission && (
+              <div className="flex items-center gap-2 pt-1 border-t border-rose-200/60">
+                <button
+                  type="button"
+                  onClick={requestPermission}
+                  className="px-2.5 py-1 rounded-lg bg-rose-600 text-white text-[11px] font-bold hover:bg-rose-700 transition cursor-pointer"
+                >
+                  Allow Nearby Devices
+                </button>
+                <button
+                  type="button"
+                  onClick={handleOpenSettings}
+                  className="px-2.5 py-1 rounded-lg bg-white border border-rose-300 text-rose-700 text-[11px] font-semibold hover:bg-rose-100 transition cursor-pointer"
+                >
+                  Open App Settings
+                </button>
+              </div>
+            )}
           </div>
         )}
 

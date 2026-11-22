@@ -18,6 +18,9 @@ export interface BluetoothDeviceInfo {
 export interface BluetoothPrinterPluginInterface {
   isAvailable(): Promise<{ supported: boolean; enabled: boolean; hasPermission: boolean }>;
   getPairedDevices(): Promise<{ devices: BluetoothDeviceInfo[] }>;
+  requestPermissions?(): Promise<any>;
+  requestBluetoothPermission?(): Promise<{ requested: boolean; hasPermission: boolean }>;
+  openAppSettings?(): Promise<{ opened: boolean }>;
   printBytes(options: { address: string; bytesBase64: string }): Promise<{ success: boolean; message: string }>;
   printRawBt(options: { bytesBase64: string }): Promise<{ success: boolean; message: string }>;
   printSystem(): Promise<{ success: boolean }>;
@@ -170,9 +173,18 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
     addLine(`Reg/VAT: ${settings.registrationNumber}`);
   }
 
+  const isPureReturn = (!order.items || order.items.length === 0) && (order.returns && order.returns.length > 0);
+  const isExchange = order.isExchangeOrder || ((order.items && order.items.length > 0) && (order.returns && order.returns.length > 0));
+
   addLine(dividerLine('='));
   addBytes(COMMANDS.BOLD_ON);
-  addLine('*** SALES BILL / DELIVERY RECEIPT ***');
+  if (isExchange) {
+    addLine('*** GOODS RETURN & EXCHANGE SLIP ***');
+  } else if (isPureReturn || order.orderNumber?.startsWith('RET-')) {
+    addLine('*** GOODS RETURN CREDIT VOUCHER ***');
+  } else {
+    addLine('*** SALES BILL / DELIVERY RECEIPT ***');
+  }
   addBytes(COMMANDS.BOLD_OFF);
   addLine(dividerLine('='));
 
@@ -235,6 +247,22 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
     }
   });
 
+  // Returned Goods Section
+  if (order.returns && order.returns.length > 0) {
+    addLine(dividerLine('-'));
+    addBytes(COMMANDS.BOLD_ON);
+    addLine(padTwoColumns('RETURNED / DAMAGED GOODS', 'CREDIT'));
+    addBytes(COMMANDS.BOLD_OFF);
+    addLine(dividerLine('-'));
+    order.returns.forEach(ret => {
+      const tag = ret.returnType === 'DAMAGE' ? '[DMG]' : '[RET]';
+      addLine(`${tag} ${(ret.product?.name || 'Item').slice(0, RECEIPT_WIDTH - 6)}`);
+      const lineDeduct = `  ${ret.quantity} pcs x Rs.${ret.unitPrice.toFixed(2)}`;
+      const retTot = `-Rs.${ret.total.toFixed(2)}`;
+      addLine(padTwoColumns(lineDeduct, retTot));
+    });
+  }
+
   addLine(dividerLine('-'));
 
   // 7. Totals & Payment Breakdown
@@ -246,6 +274,18 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
 
   if (order.discountAmount > 0) {
     addLine(padTwoColumns('Discount:', `-Rs.${order.discountAmount.toFixed(2)}`));
+  }
+
+  if (order.returnAmount && order.returnAmount > 0) {
+    addLine(padTwoColumns('Return Deductions:', `-Rs.${order.returnAmount.toFixed(2)}`));
+  }
+
+  if (order.appliedCreditAmount && order.appliedCreditAmount > 0) {
+    addLine(padTwoColumns('Prior Return Credit Applied:', `-Rs.${order.appliedCreditAmount.toFixed(2)}`));
+  }
+
+  if (order.customer?.returnCreditBalance && order.customer.returnCreditBalance > 0) {
+    addLine(padTwoColumns('Next Bill Credit Balance:', `Rs.${order.customer.returnCreditBalance.toFixed(2)}`));
   }
 
   addLine(dividerLine('='));

@@ -189,6 +189,7 @@ export interface Customer {
   discountPercentage: number;
   creditLimit: number;
   outstandingBalance: number;
+  returnCreditBalance?: number;
   maxCreditInvoices?: number;
   latitude?: number | null;
   longitude?: number | null;
@@ -301,6 +302,8 @@ export interface Order {
   discountAmount: number;
   taxAmount: number;
   returnAmount?: number;
+  appliedCreditAmount?: number;
+  isExchangeOrder?: boolean;
   netTotal: number;
   cashReceived: number;
   paidAmount?: number;
