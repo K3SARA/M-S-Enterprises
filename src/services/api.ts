@@ -33,6 +33,7 @@ import {
   ReturnableProduct,
   MapFleetData,
   LorryLocationHistory,
+  BottleExchangePayload,
   CustomerVisit,
   RouteOptimizationResult,
   RouteStatusResult,
@@ -182,6 +183,7 @@ export const LorryService = {
     longitude?: number;
     adminOverridePasscode?: string;
     fulfilledPreOrderIds?: string[];
+    bottleExchange?: BottleExchangePayload;
   }) => api.post<Order>(`/lorries/${id}/bills`, payload).then(r => r.data),
   settleLorry: (id: string, payload: {
     loadingId: string;
@@ -289,6 +291,7 @@ export const OrderService = {
     settlePreviousBills?: { orderId: string; amount: number; paymentMethod?: string }[];
     adminOverridePasscode?: string;
     fulfilledPreOrderIds?: string[];
+    bottleExchange?: BottleExchangePayload;
   }) => api.post<Order>('/orders', payload).then(r => r.data),
   updateStatus: (id: string, status: string) =>
     api.patch<Order>(`/orders/${id}/status`, { status }).then(r => r.data)
@@ -827,3 +830,25 @@ export const RepAttendanceService = {
   getCurrentSalarySlip: (params?: { userId?: string; lorryId?: string; month?: number; year?: number }) =>
     api.get<RepSalarySlipPreview>('/rep/salary-slip/current', { params }).then(r => r.data),
 };
+
+export const BottleService = {
+  getCustomerLedger: (customerId: string) =>
+    api.get<{ emptyBottleBalance: number; transactions: any[] }>(`/customers/${customerId}/bottle-ledger`).then(r => r.data),
+  adjustCustomerBottles: (customerId: string, payload: {
+    adjustmentType: 'RETURN_GOOD' | 'CHARGE_DAMAGE' | 'CHARGE_MISSING' | 'WRITE_OFF';
+    quantity: number;
+    ratePerBottle?: number;
+    notes?: string;
+    userId?: string;
+  }) => api.post<{ success: boolean; emptyBottleBalance: number; transaction: any }>(`/customers/${customerId}/bottle-adjust`, payload).then(r => r.data),
+  getReport: () =>
+    api.get<{
+      totalOutstandingInMarket: number;
+      customersWithBalance: any[];
+      totalDamagedCharged: number;
+      totalMissingCharged: number;
+      totalBottleRevenue: number;
+      recentTransactions: any[];
+    }>('/reports/empty-bottles').then(r => r.data),
+};
+

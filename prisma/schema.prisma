@@ -26,6 +26,9 @@ model Product {
   freeRatioBuy  Int      @default(0) // Buy X (e.g. 10)
   freeRatioGet  Int      @default(0) // Get Y Free (e.g. 1)
   isRawMaterial Boolean  @default(false) // Raw materials / packaging vs finished goods
+  isReturnableBottle Boolean @default(false) // Returnable glass bottle product
+  bottlesPerUnit     Int     @default(1) // Bottles per unit/pack/case (e.g. 24)
+  bottleDepositFee   Float   @default(120.0) // Charge per damaged/missing bottle (Rs. 120)
   createdAt     DateTime @default(now())
   updatedAt     DateTime @updatedAt
 
@@ -39,9 +42,23 @@ model Product {
   purchaseOrderItems PurchaseOrderItem[]
   orderReturns       OrderReturn[]
   preOrderItems      PreOrderItem[]
+  priceTiers         ProductPriceTier[]
   recipes            Recipe[]            @relation("ProductRecipes")
   recipeItems        RecipeItem[]        @relation("RecipeComponents")
   productionRunItems ProductionRunItem[] @relation("RunConsumedItems")
+}
+
+model ProductPriceTier {
+  id        String   @id @default(uuid())
+  productId String
+  product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
+  minQty    Int
+  unitPrice Float
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  @@unique([productId, minQty])
+  @@index([productId])
 }
 
 model StockMovement {
@@ -125,9 +142,11 @@ model LorryStock {
   lorry     Lorry    @relation(fields: [lorryId], references: [id], onDelete: Cascade)
   productId String
   product   Product  @relation(fields: [productId], references: [id], onDelete: Cascade)
-  quantity     Int      @default(0) // Regular floating stock
-  freeQuantity Int      @default(0) // Free issue floating stock (Cost = 0)
-  updatedAt    DateTime @updatedAt
+  quantity            Int      @default(0) // Regular floating stock
+  freeQuantity        Int      @default(0) // Free issue floating stock (Cost = 0)
+  goodEmptyBottles    Int      @default(0) // Collected good empty bottles on lorry
+  damagedEmptyBottles Int      @default(0) // Collected damaged empty bottles on lorry
+  updatedAt           DateTime @updatedAt
 
   @@unique([lorryId, productId])
 }
@@ -191,6 +210,7 @@ model Customer {
   outstandingBalance Float    @default(0.0) // Current credit balance
   returnCreditBalance Float   @default(0.0) // Unredeemed return credits to apply to future bills
   maxCreditInvoices  Int      @default(1) // Max allowed unpaid bills before knock-off settlement required
+  emptyBottleBalance Int      @default(0) // Net empty bottles owed by customer to distributor
 
   // Geolocation & Mapping
   latitude           Float?
@@ -203,6 +223,7 @@ model Customer {
   payments CustomerPayment[]
   visits   CustomerVisit[]
   preOrders PreOrder[]
+  bottleTransactions CustomerBottleTransaction[]
 }
 
 // --------------------------------------------------------
@@ -254,6 +275,12 @@ model Order {
   returnAmount   Float @default(0.0) // Value of returned/damaged goods deducted from bill
   appliedCreditAmount Float @default(0.0) // Prior return credit balance deducted from this bill
   isExchangeOrder     Boolean @default(false) // True if order was an immediate item-for-item exchange
+  deliveredBottles    Int     @default(0) // Total full bottles delivered on this bill
+  returnedGoodBottles Int     @default(0) // Good empty bottles collected
+  damagedBottles      Int     @default(0) // Damaged empty bottles charged @ Rs. 120
+  missingBottles      Int     @default(0) // Missing/lost bottles charged @ Rs. 120
+  retainedBottles     Int     @default(0) // Unreturned bottles added to customer bottle debt
+  bottleChargeAmount  Float   @default(0.0) // Total bottle fee added to bill net total
   netTotal       Float
   cashReceived   Float @default(0.0)
   paidAmount     Float @default(0.0) // Total amount paid against this specific bill
@@ -276,6 +303,36 @@ model Order {
   items       OrderItem[]
   returns     OrderReturn[]
   allocations BillPaymentAllocation[]
+  bottleTransactions CustomerBottleTransaction[]
+}
+
+// --------------------------------------------------------
+// 4.1 EMPTY BOTTLE LEDGER & TRANSACTIONS
+// --------------------------------------------------------
+model CustomerBottleTransaction {
+  id              String   @id @default(uuid())
+  customerId      String
+  customer        Customer @relation(fields: [customerId], references: [id], onDelete: Cascade)
+  orderId         String?
+  order           Order?   @relation(fields: [orderId], references: [id], onDelete: SetNull)
+  lorryId         String?
+  userId          String?
+
+  type            String   @default("ORDER_DELIVERY") // ORDER_DELIVERY, RETURN_COLLECTION, DAMAGE_CHARGE, MANUAL_ADJUSTMENT
+  deliveredFulls  Int      @default(0) // Full bottles delivered
+  returnedGood    Int      @default(0) // Good empty bottles returned
+  damagedBottles  Int      @default(0) // Damaged empty bottles returned (charged Rs. 120)
+  missingCharged  Int      @default(0) // Missing/lost bottles paid for immediately (charged Rs. 120)
+  missingRetained Int      @default(0) // Missing bottles added to customer bottle debt
+
+  ratePerBottle   Float    @default(120.0)
+  totalFeeCharged Float    @default(0.0)
+  balanceAfter    Int      @default(0) // Customer emptyBottleBalance after transaction
+  notes           String?
+  createdAt       DateTime @default(now())
+
+  @@index([customerId, createdAt])
+  @@index([orderId])
 }
 
 model OrderItem {

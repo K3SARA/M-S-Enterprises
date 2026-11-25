@@ -34,6 +34,8 @@ export interface LorryStock {
   product: Product;
   quantity: number;
   freeQuantity?: number;
+  goodEmptyBottles?: number;
+  damagedEmptyBottles?: number;
   updatedAt: string;
 }
 
@@ -73,6 +75,15 @@ export interface LorryLoading {
   createdAt: string;
 }
 
+export interface ProductPriceTier {
+  id?: string;
+  productId?: string;
+  minQty: number;
+  unitPrice: number;
+  createdAt?: string;
+  updatedAt?: string;
+}
+
 export interface Product {
   id: string;
   sku: string;
@@ -89,8 +100,12 @@ export interface Product {
   freeRatioBuy?: number;
   freeRatioGet?: number;
   isRawMaterial?: boolean;
+  isReturnableBottle?: boolean;
+  bottlesPerUnit?: number;
+  bottleDepositFee?: number;
   supplierId?: string | null;
   supplier?: Supplier | null;
+  priceTiers?: ProductPriceTier[];
   createdAt: string;
   updatedAt: string;
   lorryStocks?: {
@@ -191,6 +206,7 @@ export interface Customer {
   outstandingBalance: number;
   returnCreditBalance?: number;
   maxCreditInvoices?: number;
+  emptyBottleBalance?: number;
   latitude?: number | null;
   longitude?: number | null;
   creditRisk?: CustomerCreditRisk;
@@ -341,6 +357,12 @@ export interface Order {
   returnAmount?: number;
   appliedCreditAmount?: number;
   isExchangeOrder?: boolean;
+  deliveredBottles?: number;
+  returnedGoodBottles?: number;
+  damagedBottles?: number;
+  missingBottles?: number;
+  retainedBottles?: number;
+  bottleChargeAmount?: number;
   netTotal: number;
   cashReceived: number;
   paidAmount?: number;
@@ -356,6 +378,35 @@ export interface Order {
   updatedAt: string;
   items: OrderItem[];
   returns?: OrderReturn[];
+}
+
+export interface BottleExchangePayload {
+  deliveredBottles: number;
+  returnedGoodBottles: number;
+  damagedBottles: number;
+  missingBottles: number;
+  chargeMissing: boolean;
+  bottleDepositRate?: number;
+}
+
+export interface CustomerBottleTransaction {
+  id: string;
+  customerId: string;
+  orderId?: string | null;
+  order?: { orderNumber: string; paperBillNumber?: string | null } | null;
+  lorryId?: string | null;
+  userId?: string | null;
+  type: 'ORDER_DELIVERY' | 'RETURN_COLLECTION' | 'DAMAGE_CHARGE' | 'MANUAL_ADJUSTMENT';
+  deliveredFulls: number;
+  returnedGood: number;
+  damagedBottles: number;
+  missingCharged: number;
+  missingRetained: number;
+  ratePerBottle: number;
+  totalFeeCharged: number;
+  balanceAfter: number;
+  notes?: string | null;
+  createdAt: string;
 }
 
 export interface StockMovement {

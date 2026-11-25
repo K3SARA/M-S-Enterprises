@@ -18,20 +18,27 @@ import {
   Loader2,
   Tag,
   Clock,
-  X
+  X,
+  Zap
 } from 'lucide-react';
-import { Lorry, Customer, Order, Product, ReturnableProduct, PreOrder } from '../types';
+import { Lorry, Customer, Order, Product, ReturnableProduct, PreOrder, ProductPriceTier } from '../types';
 import { LorryService, CustomerService, OrderService, ProductService, PreOrderService } from '../services/api';
 import { useCurrency } from '../context/CurrencyContext';
 import { CustomerModal } from '../components/CustomerModal';
 import { BarcodeScannerModal } from '../components/BarcodeScannerModal';
 import { CreditRiskBadge, CustomerAgingCard } from '../components/CreditRiskBadge';
 import { AdminPasscodeModal } from '../components/AdminPasscodeModal';
+import { resolveTierUnitPrice } from '../utils/pricing';
+import { EmptyBottleBar, EmptyBottleState } from '../components/EmptyBottleBar';
 
 interface BillItemRow {
   productId: string;
   quantity: number;
   freeQuantity: number;
+  unitPrice?: number;
+  isManualPrice?: boolean;
+  isTierPrice?: boolean;
+  activeTierMinQty?: number;
   discountType?: '%' | 'Rs';
   discountPercent?: number;
   discountAmount?: number;
@@ -80,6 +87,14 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const [billDiscountType, setBillDiscountType] = useState<'%' | 'Rs'>('%');
   const [billDiscountValue, setBillDiscountValue] = useState<number>(0);
   const [billDiscountManual, setBillDiscountManual] = useState<boolean>(false);
+
+  // Empty Bottle State
+  const [bottleState, setBottleState] = useState<EmptyBottleState>({
+    returnedGood: 0,
+    damaged: 0,
+    missing: 0,
+    chargeMissing: false
+  });
 
   // Customer Unpaid Bills (for Bill-to-Bill clearance / knock-off)
   const [customerUnpaidBills, setCustomerUnpaidBills] = useState<Order[]>([]);
@@ -382,6 +397,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     freeStock: number;
     freeRatioBuy?: number;
     freeRatioGet?: number;
+    priceTiers?: ProductPriceTier[];
   }
 
   const availableItems: AvailableItem[] = billMode === 'LORRY'
@@ -394,7 +410,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         stock: s.quantity,
         freeStock: s.freeQuantity || 0,
         freeRatioBuy: s.product.freeRatioBuy,
-        freeRatioGet: s.product.freeRatioGet
+        freeRatioGet: s.product.freeRatioGet,
+        priceTiers: s.product.priceTiers
       }))
     : warehouseProducts
         .filter(p => p.currentStock > 0 || (p.freeStock && p.freeStock > 0))
@@ -407,7 +424,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           stock: p.currentStock,
           freeStock: p.freeStock || 0,
           freeRatioBuy: p.freeRatioBuy,
-          freeRatioGet: p.freeRatioGet
+          freeRatioGet: p.freeRatioGet,
+          priceTiers: p.priceTiers
         }));
 
   const addItemRow = () => {
@@ -422,7 +440,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     const updated = [...billItems];
     const currentRow = { ...updated[index], [field]: value };
 
-    // Auto-calculate free issues if trade scheme exists and productId or quantity changed
+    // Auto-calculate free issues and volume tiered pricing if productId or quantity changed
     if (field === 'productId' || field === 'quantity') {
       const targetProdId = field === 'productId' ? value : currentRow.productId;
       const itemInfo = availableItems.find(s => s.productId === targetProdId);
@@ -434,6 +452,29 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       } else if (field === 'productId') {
         currentRow.freeQuantity = 0;
       }
+
+      if (itemInfo) {
+        const resolved = resolveTierUnitPrice(
+          { unitPrice: itemInfo.unitPrice, priceTiers: itemInfo.priceTiers },
+          currentRow.quantity,
+          {
+            manualPrice: currentRow.unitPrice,
+            isManual: currentRow.isManualPrice && field !== 'quantity'
+          }
+        );
+        currentRow.unitPrice = resolved.unitPrice;
+        currentRow.isTierPrice = resolved.isTierPrice;
+        currentRow.activeTierMinQty = resolved.activeTier?.minQty;
+        if (field === 'quantity') {
+          currentRow.isManualPrice = false;
+        }
+      }
+    }
+
+    if (field === 'unitPrice') {
+      currentRow.isManualPrice = true;
+      currentRow.isTierPrice = false;
+      currentRow.activeTierMinQty = undefined;
     }
 
     updated[index] = currentRow;
@@ -532,7 +573,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   // Calculate bill totals
   const calculateItemDiscount = (item: BillItemRow) => {
     const itemInfo = availableItems.find(s => s.productId === item.productId);
-    const price = itemInfo ? itemInfo.unitPrice : 0;
+    const price = item.unitPrice !== undefined ? item.unitPrice : (itemInfo ? itemInfo.unitPrice : 0);
     const itemGross = price * (item.quantity || 0);
     if (itemGross <= 0) return 0;
     if (item.discountType === 'Rs') {
@@ -545,7 +586,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const calculateSubtotal = () => {
     return billItems.reduce((acc, item) => {
       const itemInfo = availableItems.find(s => s.productId === item.productId);
-      const price = itemInfo ? itemInfo.unitPrice : 0;
+      const price = item.unitPrice !== undefined ? item.unitPrice : (itemInfo ? itemInfo.unitPrice : 0);
       return acc + (price * (item.quantity || 0));
     }, 0);
   };
@@ -572,8 +613,23 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
     ? (billDiscountValue || 0)
     : (subtotalAfterItemDiscounts > 0 ? (billDiscountAmount / subtotalAfterItemDiscounts) * 100 : 0);
 
+  let deliveredBottles = 0;
+  let bottleDepositRate = 120;
+  for (const item of billItems) {
+    if (!item.productId) continue;
+    const prod = warehouseProducts.find(p => p.id === item.productId);
+    if (prod?.isReturnableBottle) {
+      const perUnit = prod.bottlesPerUnit && prod.bottlesPerUnit > 0 ? prod.bottlesPerUnit : 1;
+      deliveredBottles += ((item.quantity || 0) + (item.freeQuantity || 0)) * perUnit;
+      if (prod.bottleDepositFee && prod.bottleDepositFee > 0) {
+        bottleDepositRate = prod.bottleDepositFee;
+      }
+    }
+  }
+  const bottleChargeAmount = (bottleState.damaged + (bottleState.chargeMissing ? bottleState.missing : 0)) * bottleDepositRate;
+
   const totalDiscountAmount = totalItemDiscounts + billDiscountAmount;
-  const netTotal = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
+  const netTotal = Math.max(0, subtotal - totalDiscountAmount - returnAmount) + bottleChargeAmount;
   const totalBilledUnits = billItems.reduce((acc, item) => acc + (item.quantity || 0), 0);
   const totalFreeUnits = billItems.reduce((acc, item) => acc + (item.freeQuantity || 0), 0);
   const totalReturnUnits = returnItems.reduce((acc, ret) => acc + (ret.productId && ret.quantity > 0 ? ret.quantity : 0), 0);
@@ -661,7 +717,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
 
       const formattedItemsPayload = validItems.map(i => {
         const itemInfo = availableItems.find(s => s.productId === i.productId);
-        const price = itemInfo ? itemInfo.unitPrice : 0;
+        const price = i.unitPrice !== undefined ? i.unitPrice : (itemInfo ? itemInfo.unitPrice : 0);
         const itemGross = price * (i.quantity || 0);
         let itemDiscAmount = 0;
         let itemDiscPercent = 0;
@@ -682,6 +738,18 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         };
       });
 
+      const bottleExchangePayload =
+        deliveredBottles > 0 || bottleState.returnedGood > 0 || bottleState.damaged > 0 || bottleState.missing > 0
+          ? {
+              deliveredBottles,
+              returnedGoodBottles: bottleState.returnedGood,
+              damagedBottles: bottleState.damaged,
+              missingBottles: bottleState.missing,
+              chargeMissing: bottleState.chargeMissing,
+              bottleDepositRate
+            }
+          : undefined;
+
       if (billMode === 'LORRY') {
         const createdOrder = await LorryService.enterDriverBill(selectedLorryId, {
           paperBillNumber: paperBillNumber.trim() || undefined,
@@ -698,7 +766,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           notes: notes.trim() || undefined,
           settlePreviousBills: previousBillsPayload,
           adminOverridePasscode: adminOverridePasscode || undefined,
-          fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined
+          fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined,
+          bottleExchange: bottleExchangePayload
         });
 
         const settleNote = previousBillsPayload ? ` + Cleared Prev Bill (${formatMoney(previousBillsPayload[0].amount)})` : '';
@@ -725,7 +794,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           notes: notes.trim() || undefined,
           settlePreviousBills: previousBillsPayload,
           adminOverridePasscode: adminOverridePasscode || undefined,
-          fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined
+          fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined,
+          bottleExchange: bottleExchangePayload
         });
 
         const customerDisplayName = walkInName.trim() || (createdOrder.customer ? createdOrder.customer.name : 'Walk-in Customer');
@@ -743,6 +813,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       setHasDraft(false);
       setPaperBillNumber('');
       setBillItems([{ productId: '', quantity: 1, freeQuantity: 0 }]);
+      setBottleState({ returnedGood: 0, damaged: 0, missing: 0, chargeMissing: false });
       setWalkInName('');
       setWalkInPhone('');
       setSelectedCustomerId(billMode === 'WALK_IN' ? 'walk-in' : '');
@@ -1542,6 +1613,15 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                 })
               )}
             </div>
+
+            {/* Empty Bottle Exchange & Deposit Bar */}
+            <EmptyBottleBar
+              deliveredBottles={deliveredBottles}
+              customerBottleBalance={selectedCustomer?.emptyBottleBalance || 0}
+              depositRate={bottleDepositRate}
+              value={bottleState}
+              onChange={setBottleState}
+            />
 
             {/* Payment Details */}
             <div className="p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl space-y-4 shadow-2xs">

@@ -15,8 +15,8 @@ import {
   Trash2,
   CheckCircle2
 } from 'lucide-react';
-import { CustomerService, RouteService } from '../services/api';
-import { Customer, Order, Route, CustomerPayment } from '../types';
+import { CustomerService, RouteService, BottleService } from '../services/api';
+import { Customer, Order, Route, CustomerPayment, CustomerBottleTransaction } from '../types';
 import { CustomerModal } from '../components/CustomerModal';
 import { CustomerPaymentModal } from '../components/CustomerPaymentModal';
 import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
@@ -45,9 +45,10 @@ export const Customers: React.FC<{ onViewInvoice?: (order: Order) => void }> = (
 
   // History Drawer
   const [historyCustomer, setHistoryCustomer] = useState<Customer | null>(null);
-  const [historyTab, setHistoryTab] = useState<'ORDERS' | 'PAYMENTS'>('ORDERS');
+  const [historyTab, setHistoryTab] = useState<'ORDERS' | 'PAYMENTS' | 'BOTTLES'>('ORDERS');
   const [customerOrders, setCustomerOrders] = useState<Order[]>([]);
   const [customerPayments, setCustomerPayments] = useState<CustomerPayment[]>([]);
+  const [bottleLedger, setBottleLedger] = useState<CustomerBottleTransaction[]>([]);
   const [loadingHistory, setLoadingHistory] = useState(false);
   const [successNotification, setSuccessNotification] = useState<string | null>(null);
 
@@ -99,17 +100,19 @@ export const Customers: React.FC<{ onViewInvoice?: (order: Order) => void }> = (
     }
   };
 
-  const openHistory = async (cust: Customer, defaultTab: 'ORDERS' | 'PAYMENTS' = 'ORDERS') => {
+  const openHistory = async (cust: Customer, defaultTab: 'ORDERS' | 'PAYMENTS' | 'BOTTLES' = 'ORDERS') => {
     setHistoryCustomer(cust);
     setHistoryTab(defaultTab);
     setLoadingHistory(true);
     try {
-      const [orders, payments] = await Promise.all([
+      const [orders, payments, bottles] = await Promise.all([
         CustomerService.getOrderHistory(cust.id),
-        CustomerService.getPayments(cust.id)
+        CustomerService.getPayments(cust.id),
+        BottleService.getCustomerLedger(cust.id).catch(() => ({ emptyBottleBalance: cust.emptyBottleBalance || 0, transactions: [] }))
       ]);
       setCustomerOrders(orders);
       setCustomerPayments(payments);
+      setBottleLedger(bottles.transactions || []);
     } catch (err) {
       console.error('Failed to load customer history', err);
     } finally {
@@ -310,6 +313,11 @@ export const Customers: React.FC<{ onViewInvoice?: (order: Order) => void }> = (
                   >
                     {formatMoney(c.outstandingBalance || 0)}
                   </span>
+                  {(c.emptyBottleBalance || 0) > 0 && (
+                    <span className="mt-1 inline-flex items-center gap-1 px-2 py-0.5 rounded-lg bg-cyan-50 border border-cyan-200/80 text-cyan-800 text-[10px] font-bold">
+                      🍾 {c.emptyBottleBalance} Bottles Owed
+                    </span>
+                  )}
                 </div>
 
                 <div className="flex items-center gap-1.5">
@@ -429,7 +437,20 @@ export const Customers: React.FC<{ onViewInvoice?: (order: Order) => void }> = (
                   }`}
                 >
                   <Receipt className="w-3.5 h-3.5" />
-                  <span>Payment Receipts ({customerPayments.length})</span>
+                  <span>Receipts ({customerPayments.length})</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setHistoryTab('BOTTLES')}
+                  className={`px-4 py-2 rounded-xl text-xs font-bold flex items-center gap-2 transition ${
+                    historyTab === 'BOTTLES'
+                      ? 'bg-cyan-600 text-white shadow-xs'
+                      : 'bg-slate-100 text-slate-600 hover:bg-slate-200'
+                  }`}
+                >
+                  <span>🍾</span>
+                  <span>Bottles ({historyCustomer.emptyBottleBalance || 0})</span>
                 </button>
               </div>
 
@@ -437,6 +458,72 @@ export const Customers: React.FC<{ onViewInvoice?: (order: Order) => void }> = (
               <div className="py-4">
                 {loadingHistory ? (
                   <div className="py-12 text-center text-xs text-slate-400">Loading history records...</div>
+                ) : historyTab === 'BOTTLES' ? (
+                  <div className="space-y-3">
+                    <div className="p-3.5 rounded-2xl bg-cyan-50/70 border border-cyan-200 flex items-center justify-between">
+                      <div>
+                        <span className="text-[10px] font-bold uppercase tracking-wider text-cyan-800 block">
+                          Current Empty Bottle Balance
+                        </span>
+                        <span className="text-lg font-extrabold font-mono text-cyan-950">
+                          {historyCustomer.emptyBottleBalance || 0} Bottles Owed
+                        </span>
+                      </div>
+                      {(historyCustomer.emptyBottleBalance || 0) > 0 && (
+                        <button
+                          type="button"
+                          onClick={async () => {
+                            const qtyStr = window.prompt('Enter number of good empty bottles returned by customer:', String(historyCustomer.emptyBottleBalance || 1));
+                            const qty = parseInt(qtyStr || '0', 10);
+                            if (qty > 0) {
+                              await BottleService.adjustCustomerBottles(historyCustomer.id, {
+                                adjustmentType: 'RETURN_GOOD',
+                                quantity: qty,
+                                notes: 'Manual bottle return settlement in Customers drawer'
+                              });
+                              const updatedLedger = await BottleService.getCustomerLedger(historyCustomer.id);
+                              setBottleLedger(updatedLedger.transactions || []);
+                              setHistoryCustomer({ ...historyCustomer, emptyBottleBalance: updatedLedger.emptyBottleBalance });
+                              await loadData();
+                            }
+                          }}
+                          className="px-3 py-1.5 rounded-xl bg-cyan-600 hover:bg-cyan-700 text-white text-xs font-bold transition shadow-2xs"
+                        >
+                          + Record Return
+                        </button>
+                      )}
+                    </div>
+
+                    {bottleLedger.length === 0 ? (
+                      <div className="py-10 text-center text-xs text-slate-400">
+                        No empty bottle transactions recorded yet.
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {bottleLedger.map(bt => (
+                          <div key={bt.id} className="p-3 rounded-2xl border border-slate-200/80 bg-slate-50/60 flex items-center justify-between text-xs">
+                            <div>
+                              <div className="flex items-center gap-2 font-bold text-slate-800">
+                                <span>{bt.order?.orderNumber || bt.type}</span>
+                                {bt.totalFeeCharged > 0 && (
+                                  <span className="px-1.5 py-0.5 rounded bg-amber-100 text-amber-800 text-[10px] font-mono">
+                                    Fee: {formatMoney(bt.totalFeeCharged)}
+                                  </span>
+                                )}
+                              </div>
+                              <p className="text-[11px] text-slate-500 mt-0.5">
+                                {new Date(bt.createdAt).toLocaleDateString()} • Fulls: {bt.deliveredFulls} | Good: {bt.returnedGood} | Damaged: {bt.damagedBottles} | Missing: {bt.missingCharged + bt.missingRetained}
+                              </p>
+                            </div>
+                            <div className="text-right">
+                              <span className="text-[10px] text-slate-400 block">Balance</span>
+                              <span className="font-mono font-bold text-cyan-800">{bt.balanceAfter} btls</span>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 ) : historyTab === 'ORDERS' ? (
                   /* Orders Tab */
                   customerOrders.length === 0 ? (

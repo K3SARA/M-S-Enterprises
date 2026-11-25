@@ -2431,6 +2431,9 @@ app.get('/api/products', async (req: Request, res: Response) => {
         supplier: true,
         lorryStocks: {
           include: { lorry: true }
+        },
+        priceTiers: {
+          orderBy: { minQty: 'desc' }
         }
       },
       orderBy: { name: 'asc' }
@@ -2471,7 +2474,10 @@ app.get('/api/products/scan/:code', async (req: Request, res: Response) => {
       },
       include: {
         supplier: true,
-        lorryStocks: lorryId ? { where: { lorryId: lorryId as string } } : true
+        lorryStocks: lorryId ? { where: { lorryId: lorryId as string } } : true,
+        priceTiers: {
+          orderBy: { minQty: 'desc' }
+        }
       }
     });
 
@@ -2486,7 +2492,10 @@ app.get('/api/products/scan/:code', async (req: Request, res: Response) => {
         },
         include: {
           supplier: true,
-          lorryStocks: lorryId ? { where: { lorryId: lorryId as string } } : true
+          lorryStocks: lorryId ? { where: { lorryId: lorryId as string } } : true,
+          priceTiers: {
+            orderBy: { minQty: 'desc' }
+          }
         }
       });
     }
@@ -2521,7 +2530,7 @@ app.get('/api/products/scan/:code', async (req: Request, res: Response) => {
 // Create product
 app.post('/api/products', async (req: Request, res: Response) => {
   try {
-    const { sku, barcode, name, category, unit, unitPrice, costPrice, currentStock, freeStock, minStockAlert, freeRatioBuy, freeRatioGet, isRawMaterial, supplierId } = req.body;
+    const { sku, barcode, name, category, unit, unitPrice, costPrice, currentStock, freeStock, minStockAlert, freeRatioBuy, freeRatioGet, isRawMaterial, isReturnableBottle, bottlesPerUnit, bottleDepositFee, supplierId, priceTiers } = req.body;
 
     if (!sku || !name) {
       return res.status(400).json({ error: 'SKU and Name are required.' });
@@ -2535,6 +2544,12 @@ app.post('/api/products', async (req: Request, res: Response) => {
 
     const initialCurrentStock = parseInt(currentStock || 0, 10);
     const initialFreeStock = parseInt(freeStock || 0, 10);
+
+    const validTiers = Array.isArray(priceTiers)
+      ? priceTiers
+          .map((t: any) => ({ minQty: parseInt(t.minQty, 10), unitPrice: parseFloat(t.unitPrice) }))
+          .filter((t: any) => t.minQty > 1 && t.unitPrice > 0)
+      : [];
 
     const product = await (prisma.product as any).create({
       data: {
@@ -2551,10 +2566,17 @@ app.post('/api/products', async (req: Request, res: Response) => {
         freeRatioBuy: isRaw ? 0 : (freeRatioBuy ? parseInt(freeRatioBuy, 10) : 0),
         freeRatioGet: isRaw ? 0 : (freeRatioGet ? parseInt(freeRatioGet, 10) : 0),
         isRawMaterial: isRaw,
-        supplierId: supplierId || null
+        isReturnableBottle: Boolean(isReturnableBottle),
+        bottlesPerUnit: bottlesPerUnit ? Math.max(1, parseInt(bottlesPerUnit, 10)) : 1,
+        bottleDepositFee: bottleDepositFee !== undefined && bottleDepositFee !== '' ? parseFloat(bottleDepositFee) : 120.0,
+        supplierId: supplierId || null,
+        priceTiers: validTiers.length > 0 ? { create: validTiers } : undefined
       },
       include: {
-        supplier: true
+        supplier: true,
+        priceTiers: {
+          orderBy: { minQty: 'desc' }
+        }
       }
     });
 
@@ -2592,8 +2614,21 @@ app.post('/api/products', async (req: Request, res: Response) => {
 app.put('/api/products/:id', async (req: Request, res: Response) => {
   try {
     const { id } = req.params;
-    const { sku, barcode, name, category, unit, unitPrice, costPrice, freeStock, minStockAlert, freeRatioBuy, freeRatioGet, isRawMaterial, supplierId } = req.body;
+    const { sku, barcode, name, category, unit, unitPrice, costPrice, freeStock, minStockAlert, freeRatioBuy, freeRatioGet, isRawMaterial, isReturnableBottle, bottlesPerUnit, bottleDepositFee, supplierId, priceTiers } = req.body;
     const isRaw = isRawMaterial !== undefined ? Boolean(isRawMaterial) : undefined;
+
+    if (priceTiers !== undefined && Array.isArray(priceTiers)) {
+      const validTiers = priceTiers
+        .map((t: any) => ({ minQty: parseInt(t.minQty, 10), unitPrice: parseFloat(t.unitPrice) }))
+        .filter((t: any) => t.minQty > 1 && t.unitPrice > 0);
+
+      await prisma.productPriceTier.deleteMany({ where: { productId: id } });
+      if (validTiers.length > 0) {
+        await prisma.productPriceTier.createMany({
+          data: validTiers.map(t => ({ productId: id, minQty: t.minQty, unitPrice: t.unitPrice }))
+        });
+      }
+    }
 
     const updated = await (prisma.product as any).update({
       where: { id },
@@ -2610,10 +2645,16 @@ app.put('/api/products/:id', async (req: Request, res: Response) => {
         freeRatioBuy: isRaw ? 0 : (freeRatioBuy !== undefined ? parseInt(freeRatioBuy, 10) : undefined),
         freeRatioGet: isRaw ? 0 : (freeRatioGet !== undefined ? parseInt(freeRatioGet, 10) : undefined),
         isRawMaterial: isRaw,
+        isReturnableBottle: isReturnableBottle !== undefined ? Boolean(isReturnableBottle) : undefined,
+        bottlesPerUnit: bottlesPerUnit !== undefined ? Math.max(1, parseInt(bottlesPerUnit, 10)) : undefined,
+        bottleDepositFee: bottleDepositFee !== undefined && bottleDepositFee !== '' ? parseFloat(bottleDepositFee) : undefined,
         supplierId: supplierId !== undefined ? (supplierId || null) : undefined
       },
       include: {
-        supplier: true
+        supplier: true,
+        priceTiers: {
+          orderBy: { minQty: 'desc' }
+        }
       }
     });
 
@@ -2663,6 +2704,25 @@ app.post('/api/products/bulk-import', async (req: Request, res: Response) => {
         const freeRatioGet = parseInt(item.freeRatioGet || 0, 10) || 0;
         const isRawMaterial = Boolean(item.isRawMaterial);
 
+        let parsedTiers: Array<{ minQty: number; unitPrice: number }> = [];
+        if (Array.isArray(item.priceTiers)) {
+          parsedTiers = item.priceTiers
+            .map((t: any) => ({ minQty: parseInt(t.minQty, 10), unitPrice: parseFloat(t.unitPrice) }))
+            .filter((t: any) => t.minQty > 1 && t.unitPrice > 0);
+        } else if (typeof item.priceTiers === 'string' && item.priceTiers.trim()) {
+          const tokens = item.priceTiers.split(/[|,;]+/).map((s: string) => s.trim()).filter(Boolean);
+          for (const token of tokens) {
+            const parts = token.split(/[:=\->]+/).map((s: string) => s.trim());
+            if (parts.length >= 2) {
+              const minQ = parseInt(parts[0], 10);
+              const uP = parseFloat(parts[1]);
+              if (minQ > 1 && uP > 0) {
+                parsedTiers.push({ minQty: minQ, unitPrice: uP });
+              }
+            }
+          }
+        }
+
         const existing = await tx.product.findUnique({
           where: { sku }
         });
@@ -2700,6 +2760,13 @@ app.post('/api/products/bulk-import', async (req: Request, res: Response) => {
               isRawMaterial
             }
           });
+
+          if (parsedTiers.length > 0) {
+            await tx.productPriceTier.deleteMany({ where: { productId: existing.id } });
+            await tx.productPriceTier.createMany({
+              data: parsedTiers.map(t => ({ productId: existing.id, minQty: t.minQty, unitPrice: t.unitPrice }))
+            });
+          }
 
           if (stockDiff !== 0) {
             await tx.stockMovement.create({
@@ -2745,6 +2812,12 @@ app.post('/api/products/bulk-import', async (req: Request, res: Response) => {
               isRawMaterial
             }
           });
+
+          if (parsedTiers.length > 0) {
+            await tx.productPriceTier.createMany({
+              data: parsedTiers.map(t => ({ productId: created.id, minQty: t.minQty, unitPrice: t.unitPrice }))
+            });
+          }
 
           if (currentStock > 0) {
             await tx.stockMovement.create({
@@ -4486,6 +4559,104 @@ app.get('/api/lorries/:id/current-loading', async (req: Request, res: Response) 
 });
 
 // ========================================================
+// EMPTY BOTTLE EXCHANGE & FEE CALCULATION HELPERS
+// ========================================================
+function parseBottleExchange(bottleExchange: any) {
+  if (!bottleExchange || typeof bottleExchange !== 'object') {
+    return {
+      hasActivity: false,
+      deliveredBottles: 0,
+      returnedGoodBottles: 0,
+      damagedBottles: 0,
+      missingCharged: 0,
+      missingRetained: 0,
+      ratePerBottle: 120.0,
+      bottleChargeAmount: 0.0,
+    };
+  }
+
+  const deliveredBottles = Math.max(0, parseInt(bottleExchange.deliveredBottles, 10) || 0);
+  const returnedGoodBottles = Math.max(0, parseInt(bottleExchange.returnedGoodBottles, 10) || 0);
+  const damagedBottles = Math.max(0, parseInt(bottleExchange.damagedBottles, 10) || 0);
+  const missingInput = Math.max(0, parseInt(bottleExchange.missingBottles, 10) || 0);
+  const chargeMissing = Boolean(bottleExchange.chargeMissing);
+  const ratePerBottle =
+    bottleExchange.bottleDepositRate !== undefined && parseFloat(bottleExchange.bottleDepositRate) > 0
+      ? parseFloat(bottleExchange.bottleDepositRate)
+      : 120.0;
+
+  const missingCharged = chargeMissing ? missingInput : 0;
+  const missingRetained = chargeMissing ? 0 : missingInput;
+  const bottleChargeAmount = (damagedBottles + missingCharged) * ratePerBottle;
+
+  const hasActivity =
+    deliveredBottles > 0 ||
+    returnedGoodBottles > 0 ||
+    damagedBottles > 0 ||
+    missingInput > 0;
+
+  return {
+    hasActivity,
+    deliveredBottles,
+    returnedGoodBottles,
+    damagedBottles,
+    missingCharged,
+    missingRetained,
+    ratePerBottle,
+    bottleChargeAmount,
+  };
+}
+
+async function applyBottleExchangeTx(
+  tx: any,
+  customer: any,
+  parsed: ReturnType<typeof parseBottleExchange>,
+  orderId: string,
+  lorryId: string | null,
+  userId: string | null
+) {
+  if (!parsed.hasActivity) return;
+
+  let newBalance = customer.emptyBottleBalance || 0;
+  if (customer.code !== 'WALK-IN') {
+    // Net change = Delivered Fulls - Good Empties Returned - Damaged Empties Paid - Missing Bottles Paid
+    const netDelta =
+      parsed.deliveredBottles -
+      parsed.returnedGoodBottles -
+      parsed.damagedBottles -
+      parsed.missingCharged;
+    newBalance = Math.max(0, (customer.emptyBottleBalance || 0) + netDelta);
+
+    await tx.customer.update({
+      where: { id: customer.id },
+      data: { emptyBottleBalance: newBalance },
+    });
+  }
+
+  await tx.customerBottleTransaction.create({
+    data: {
+      customerId: customer.id,
+      orderId,
+      lorryId: lorryId || null,
+      userId: userId || null,
+      type: parsed.damagedBottles > 0 && parsed.deliveredBottles === 0 ? 'DAMAGE_CHARGE' : 'ORDER_DELIVERY',
+      deliveredFulls: parsed.deliveredBottles,
+      returnedGood: parsed.returnedGoodBottles,
+      damagedBottles: parsed.damagedBottles,
+      missingCharged: parsed.missingCharged,
+      missingRetained: parsed.missingRetained,
+      ratePerBottle: parsed.ratePerBottle,
+      totalFeeCharged: parsed.bottleChargeAmount,
+      balanceAfter: newBalance,
+      notes:
+        parsed.bottleChargeAmount > 0
+          ? `Charged Rs. ${parsed.bottleChargeAmount.toFixed(2)} (${parsed.damagedBottles} damaged, ${parsed.missingCharged} missing @ Rs. ${parsed.ratePerBottle})`
+          : 'Bottle exchange recorded',
+    },
+  });
+}
+
+// ========================================================
 // 4. EVENING OFFICE BILL ENTRY (DRIVER PAPER BILLS -> SYSTEM)
 // ========================================================
 // Office manager receives physical bills from driver and enters them.
@@ -4810,8 +4981,10 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
       const customerReturnCredit = customer.returnCreditBalance || 0;
       const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
 
+      const bottleEx = parseBottleExchange(req.body.bottleExchange);
+
       const netBeforeCredit = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
-      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
+      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount) + bottleEx.bottleChargeAmount;
 
       const isCheque = paymentMethod === 'CHEQUE';
       const paidAmount = isCheque
@@ -4902,6 +5075,12 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           returnAmount,
           appliedCreditAmount,
           isExchangeOrder,
+          deliveredBottles: bottleEx.deliveredBottles,
+          returnedGoodBottles: bottleEx.returnedGoodBottles,
+          damagedBottles: bottleEx.damagedBottles,
+          missingBottles: bottleEx.missingCharged,
+          retainedBottles: bottleEx.missingRetained,
+          bottleChargeAmount: bottleEx.bottleChargeAmount,
           netTotal,
           cashReceived: isCheque ? 0 : paidAmount,
           paidAmount,
@@ -4926,6 +5105,9 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
           returns: { include: { product: true } }
         }
       });
+
+      // 3.05 Apply Empty Bottle Ledger Transaction
+      await applyBottleExchangeTx(tx, customer, bottleEx, newOrder.id, lorryId, req.body.userId || null);
 
       // 3.1 If paid by Cheque, record a CustomerPayment so Cheque Management can track & clear it
       if (isCheque && netTotal > 0) {
@@ -6978,8 +7160,10 @@ app.post('/api/orders', async (req: Request, res: Response) => {
       const customerReturnCredit = customer.returnCreditBalance || 0;
       const appliedCreditAmount = Math.min(Math.max(0, reqAppliedCredit), customerReturnCredit);
 
+      const bottleEx = parseBottleExchange(req.body.bottleExchange);
+
       const netBeforeCredit = Math.max(0, subtotal - totalDiscountAmount - returnAmount);
-      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount);
+      const netTotal = Math.max(0, netBeforeCredit - appliedCreditAmount) + bottleEx.bottleChargeAmount;
 
       const isCheque = paymentMethod === 'CHEQUE';
       const paidAmount = isCheque
@@ -7068,6 +7252,12 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           returnAmount,
           appliedCreditAmount,
           isExchangeOrder,
+          deliveredBottles: bottleEx.deliveredBottles,
+          returnedGoodBottles: bottleEx.returnedGoodBottles,
+          damagedBottles: bottleEx.damagedBottles,
+          missingBottles: bottleEx.missingCharged,
+          retainedBottles: bottleEx.missingRetained,
+          bottleChargeAmount: bottleEx.bottleChargeAmount,
           netTotal,
           cashReceived: isCheque ? 0 : paidAmount,
           paidAmount,
@@ -7086,6 +7276,9 @@ app.post('/api/orders', async (req: Request, res: Response) => {
           returns: { include: { product: true } }
         }
       });
+
+      // Apply Empty Bottle Ledger Transaction
+      await applyBottleExchangeTx(tx, customer, bottleEx, createdOrder.id, req.body.lorryId || null, req.body.userId || null);
 
       // If paid by Cheque, create CustomerPayment for Cheque Management
       if (isCheque && netTotal > 0) {
@@ -11344,6 +11537,158 @@ async function seedIfEmpty() {
     console.error('[System Init] User init check skipped:', err);
   }
 }
+
+// ========================================================
+// EMPTY BOTTLE LEDGER & REPORTING ENDPOINTS
+// ========================================================
+app.get('/api/customers/:id/bottle-ledger', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const customer = await prisma.customer.findUnique({
+      where: { id },
+      select: { id: true, name: true, emptyBottleBalance: true },
+    });
+    if (!customer) {
+      return res.status(404).json({ error: 'Customer not found' });
+    }
+    const transactions = await (prisma as any).customerBottleTransaction.findMany({
+      where: { customerId: id },
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        order: { select: { orderNumber: true, paperBillNumber: true } },
+      },
+    });
+    res.json({
+      emptyBottleBalance: customer.emptyBottleBalance || 0,
+      transactions,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
+
+app.post('/api/customers/:id/bottle-adjust', async (req: Request, res: Response) => {
+  try {
+    const { id } = req.params;
+    const { adjustmentType, quantity, ratePerBottle = 120.0, notes, userId } = req.body;
+    const qty = Math.max(1, parseInt(quantity, 10) || 0);
+    if (!qty) {
+      return res.status(400).json({ error: 'Valid positive quantity is required.' });
+    }
+
+    const result = await prisma.$transaction(async (tx: any) => {
+      const customer = await tx.customer.findUniqueOrThrow({ where: { id } });
+      const currentBal = customer.emptyBottleBalance || 0;
+      const rate = parseFloat(ratePerBottle) > 0 ? parseFloat(ratePerBottle) : 120.0;
+
+      let newBal = currentBal;
+      let returnedGood = 0;
+      let damagedBottles = 0;
+      let missingCharged = 0;
+      let totalFeeCharged = 0;
+      let type = 'MANUAL_ADJUSTMENT';
+
+      if (adjustmentType === 'RETURN_GOOD') {
+        returnedGood = qty;
+        newBal = Math.max(0, currentBal - qty);
+        type = 'RETURN_COLLECTION';
+      } else if (adjustmentType === 'CHARGE_DAMAGE') {
+        damagedBottles = qty;
+        totalFeeCharged = qty * rate;
+        newBal = Math.max(0, currentBal - qty);
+        type = 'DAMAGE_CHARGE';
+      } else if (adjustmentType === 'CHARGE_MISSING') {
+        missingCharged = qty;
+        totalFeeCharged = qty * rate;
+        newBal = Math.max(0, currentBal - qty);
+        type = 'DAMAGE_CHARGE';
+      } else {
+        // WRITE_OFF
+        newBal = Math.max(0, currentBal - qty);
+      }
+
+      await tx.customer.update({
+        where: { id },
+        data: { emptyBottleBalance: newBal },
+      });
+
+      const transaction = await tx.customerBottleTransaction.create({
+        data: {
+          customerId: id,
+          userId: userId || null,
+          type,
+          deliveredFulls: 0,
+          returnedGood,
+          damagedBottles,
+          missingCharged,
+          missingRetained: 0,
+          ratePerBottle: rate,
+          totalFeeCharged,
+          balanceAfter: newBal,
+          notes: notes?.trim() || `Manual ${adjustmentType} (${qty} bottles)`,
+        },
+      });
+
+      return { emptyBottleBalance: newBal, transaction };
+    });
+
+    res.json({ success: true, ...result });
+  } catch (error: any) {
+    res.status(400).json({ error: error.message });
+  }
+});
+
+app.get('/api/reports/empty-bottles', async (req: Request, res: Response) => {
+  try {
+    const customersWithBalance = await prisma.customer.findMany({
+      where: { emptyBottleBalance: { gt: 0 } },
+      select: {
+        id: true,
+        code: true,
+        name: true,
+        phone: true,
+        city: true,
+        emptyBottleBalance: true,
+        route: { select: { name: true } },
+      },
+      orderBy: { emptyBottleBalance: 'desc' },
+    });
+
+    const totalOutstandingInMarket = customersWithBalance.reduce(
+      (sum, c) => sum + (c.emptyBottleBalance || 0),
+      0
+    );
+
+    const recentTransactions = await (prisma as any).customerBottleTransaction.findMany({
+      orderBy: { createdAt: 'desc' },
+      take: 100,
+      include: {
+        customer: { select: { name: true, code: true } },
+        order: { select: { orderNumber: true } },
+      },
+    });
+
+    const aggregate = await (prisma as any).customerBottleTransaction.aggregate({
+      _sum: {
+        damagedBottles: true,
+        missingCharged: true,
+        totalFeeCharged: true,
+      },
+    });
+
+    res.json({
+      totalOutstandingInMarket,
+      customersWithBalance,
+      totalDamagedCharged: aggregate._sum?.damagedBottles || 0,
+      totalMissingCharged: aggregate._sum?.missingCharged || 0,
+      totalBottleRevenue: aggregate._sum?.totalFeeCharged || 0,
+      recentTransactions,
+    });
+  } catch (error: any) {
+    res.status(500).json({ error: error.message });
+  }
+});
 
 app.listen(Number(PORT), HOST, async () => {
   console.log(`[Express Backend] Distributor Server active on http://${HOST}:${PORT}`);

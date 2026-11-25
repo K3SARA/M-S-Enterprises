@@ -53,7 +53,8 @@ import {
   Tag,
   UserCheck,
   UserX,
-  FileText
+  FileText,
+  Zap
 } from 'lucide-react';
 import {
   Customer,
@@ -83,6 +84,8 @@ import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
 import { OfflineSyncService, QueuedOfflineBill } from '../services/offlineSync';
 import { executeSystemPrint } from '../utils/bluetoothPrinter';
+import { resolveTierUnitPrice } from '../utils/pricing';
+import { EmptyBottleBar, EmptyBottleState } from '../components/EmptyBottleBar';
 
 interface CartItem {
   productId: string;
@@ -92,6 +95,9 @@ interface CartItem {
   unit: string;
   unitPrice: number;
   originalUnitPrice: number;
+  isManualPrice?: boolean;
+  isTierPrice?: boolean;
+  activeTierMinQty?: number;
   availableStock: number;
   quantity: number;
   freeQuantity: number;
@@ -163,6 +169,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   const [billDiscountManual, setBillDiscountManual] = useState<boolean>(false);
   const [openItemDiscounts, setOpenItemDiscounts] = useState<Record<string, boolean>>({});
   const [useReturnCredit, setUseReturnCredit] = useState<boolean>(true);
+  const [bottleState, setBottleState] = useState<EmptyBottleState>({
+    returnedGood: 0,
+    damaged: 0,
+    missing: 0,
+    chargeMissing: false
+  });
   const [notes] = useState<string>('');
   const [submitting, setSubmitting] = useState<boolean>(false);
   const [checkoutSuccessOrder, setCheckoutSuccessOrder] = useState<Order | null>(null);
@@ -1250,13 +1262,22 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         if (nextQty <= 0 && (existing.freeQuantity || 0) <= 0) {
           return prev.filter(i => i.productId !== product.id);
         }
+        const safeQty = Math.max(0, nextQty);
+        const resolved = resolveTierUnitPrice(product, safeQty, {
+          manualPrice: existing.unitPrice,
+          isManual: existing.isManualPrice
+        });
         return prev.map(i => i.productId === product.id ? {
           ...i,
-          quantity: Math.max(0, nextQty),
-          freeQuantity: existing.manualFree ? existing.freeQuantity : calcFree(Math.max(0, nextQty))
+          quantity: safeQty,
+          unitPrice: resolved.unitPrice,
+          isTierPrice: resolved.isTierPrice,
+          activeTierMinQty: resolved.activeTier?.minQty,
+          freeQuantity: existing.manualFree ? existing.freeQuantity : calcFree(safeQty)
         } : i);
       }
       const initialQty = Math.max(1, qty);
+      const resolved = resolveTierUnitPrice(product, initialQty);
       return [
         ...prev,
         {
@@ -1265,8 +1286,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           name: product.name,
           category: product.category,
           unit: product.unit,
-          unitPrice: product.unitPrice,
+          unitPrice: resolved.unitPrice,
           originalUnitPrice: product.unitPrice,
+          isTierPrice: resolved.isTierPrice,
+          activeTierMinQty: resolved.activeTier?.minQty,
+          isManualPrice: false,
           availableStock: lorryStock,
           quantity: initialQty,
           freeQuantity: calcFree(initialQty),
@@ -1326,13 +1350,24 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         .map(i => {
           if (i.productId === productId) {
             const next = i.quantity + delta;
-            const freeQty = i.manualFree ? i.freeQuantity : calcFree(Math.max(0, next));
-            if (next <= 0 && freeQty <= 0) {
+            const safeQty = Math.max(0, next);
+            const freeQty = i.manualFree ? i.freeQuantity : calcFree(safeQty);
+            if (safeQty <= 0 && freeQty <= 0) {
               return null;
             }
+            const resolved = product
+              ? resolveTierUnitPrice(product, safeQty, {
+                  manualPrice: i.unitPrice,
+                  isManual: i.isManualPrice
+                })
+              : { unitPrice: i.unitPrice, isTierPrice: false, activeTier: null };
+
             return {
               ...i,
-              quantity: Math.max(0, next),
+              quantity: safeQty,
+              unitPrice: resolved.unitPrice,
+              isTierPrice: resolved.isTierPrice,
+              activeTierMinQty: resolved.activeTier?.minQty,
               freeQuantity: freeQty
             };
           }
@@ -1357,15 +1392,43 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             if (safeQty <= 0 && freeQty <= 0) {
               return null;
             }
+            const resolved = product
+              ? resolveTierUnitPrice(product, safeQty, {
+                  manualPrice: i.unitPrice,
+                  isManual: i.isManualPrice
+                })
+              : { unitPrice: i.unitPrice, isTierPrice: false, activeTier: null };
+
             return {
               ...i,
               quantity: safeQty,
+              unitPrice: resolved.unitPrice,
+              isTierPrice: resolved.isTierPrice,
+              activeTierMinQty: resolved.activeTier?.minQty,
               freeQuantity: freeQty
             };
           }
           return i;
         })
         .filter(Boolean) as CartItem[]
+    );
+  };
+
+  const setCartItemUnitPrice = (productId: string, newPrice: number) => {
+    setCart(prev =>
+      prev.map(i => {
+        if (i.productId === productId) {
+          const safePrice = Math.max(0, newPrice);
+          return {
+            ...i,
+            unitPrice: safePrice,
+            isManualPrice: true,
+            isTierPrice: false,
+            activeTierMinQty: undefined
+          };
+        }
+        return i;
+      })
     );
   };
 
@@ -1528,9 +1591,29 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     return Math.min(availableReturnCredit, grossAfterDiscounts);
   }, [useReturnCredit, availableReturnCredit, cartSubtotal, totalDiscountAmount]);
 
+  const { deliveredBottles, bottleDepositRate } = useMemo(() => {
+    let total = 0;
+    let rate = 120;
+    for (const item of cart) {
+      const prod = products.find(p => p.id === item.productId);
+      if (prod?.isReturnableBottle) {
+        const perUnit = prod.bottlesPerUnit && prod.bottlesPerUnit > 0 ? prod.bottlesPerUnit : 1;
+        total += (item.quantity + (item.freeQuantity || 0)) * perUnit;
+        if (prod.bottleDepositFee && prod.bottleDepositFee > 0) {
+          rate = prod.bottleDepositFee;
+        }
+      }
+    }
+    return { deliveredBottles: total, bottleDepositRate: rate };
+  }, [cart, products]);
+
+  const bottleChargeAmount = useMemo(() => {
+    return (bottleState.damaged + (bottleState.chargeMissing ? bottleState.missing : 0)) * bottleDepositRate;
+  }, [bottleState, bottleDepositRate]);
+
   const finalTotal = useMemo(() => {
-    return Math.max(0, cartSubtotal - totalDiscountAmount - appliedReturnCredit);
-  }, [cartSubtotal, totalDiscountAmount, appliedReturnCredit]);
+    return Math.max(0, cartSubtotal - totalDiscountAmount - appliedReturnCredit) + bottleChargeAmount;
+  }, [cartSubtotal, totalDiscountAmount, appliedReturnCredit, bottleChargeAmount]);
 
   // Date-filtered bills (filtered by selected date range)
   const dateFilteredBills = useMemo(() => {
@@ -1771,7 +1854,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         latitude: currentGpsCoords?.lat,
         longitude: currentGpsCoords?.lng,
         adminOverridePasscode: adminOverridePasscode || undefined,
-        fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined
+        fulfilledPreOrderIds: fulfilledPreOrderIds.length > 0 ? fulfilledPreOrderIds : undefined,
+        bottleExchange:
+          deliveredBottles > 0 || bottleState.returnedGood > 0 || bottleState.damaged > 0 || bottleState.missing > 0
+            ? {
+                deliveredBottles,
+                returnedGoodBottles: bottleState.returnedGood,
+                damagedBottles: bottleState.damaged,
+                missingBottles: bottleState.missing,
+                chargeMissing: bottleState.chargeMissing,
+                bottleDepositRate
+              }
+            : undefined
       };
 
       if (paymentMethod === 'CHEQUE') {
@@ -1912,6 +2006,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   const handleStartNewBill = () => {
     setCart([]);
+    setBottleState({ returnedGood: 0, damaged: 0, missing: 0, chargeMissing: false });
     setSelectedCustomerId('');
     setAdminOverridePasscode(null);
     setAuthorizedByName(null);
@@ -3104,11 +3199,30 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                                 Free Promo Gift
                               </span>
                             )}
+                            {item.isTierPrice && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-emerald-50 text-emerald-700 text-[10px] font-bold border border-emerald-200/80">
+                                <Zap className="w-2.5 h-2.5 text-emerald-600" />
+                                <span>Tier Price: {formatMoney(item.unitPrice)}/unit{item.activeTierMinQty ? ` (≥${item.activeTierMinQty})` : ''}</span>
+                              </span>
+                            )}
+                            {item.isManualPrice && (
+                              <span className="inline-flex items-center gap-1 px-1.5 py-0.2 rounded-md bg-amber-50 text-amber-700 text-[10px] font-bold border border-amber-200/80">
+                                Custom Price
+                              </span>
+                            )}
                           </div>
-                          <p className="text-[11px] text-slate-500 font-mono mt-0.5">
-                            <span className="font-semibold text-slate-700">{formatMoney(item.unitPrice)}</span> / {item.unit}
+                          <p className="text-[11px] text-slate-500 font-mono mt-0.5 flex items-center gap-1.5 flex-wrap">
+                            <span className={`font-semibold ${item.isTierPrice ? 'text-emerald-700 font-bold' : 'text-slate-700'}`}>
+                              {formatMoney(item.unitPrice)}
+                            </span>
+                            <span>/ {item.unit}</span>
+                            {item.isTierPrice && item.originalUnitPrice > item.unitPrice && (
+                              <span className="text-[10px] text-slate-400 line-through">
+                                {formatMoney(item.originalUnitPrice)}
+                              </span>
+                            )}
                             {item.availableStock !== undefined && (
-                              <span className="ml-1 text-slate-400">• Lorry Stock: {item.availableStock}</span>
+                              <span className="text-slate-400">• Lorry Stock: {item.availableStock}</span>
                             )}
                           </p>
                         </div>
@@ -3655,6 +3769,16 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 </div>
               )}
             </div>
+
+            {/* Empty Bottle Exchange & Deposit Bar (Shown only if bottled items or customer bottle debt exist) */}
+            <EmptyBottleBar
+              deliveredBottles={deliveredBottles}
+              customerBottleBalance={selectedCustomer?.emptyBottleBalance || 0}
+              depositRate={bottleDepositRate}
+              value={bottleState}
+              onChange={setBottleState}
+              compact
+            />
 
             {/* Payment Method Selector */}
             <div className="space-y-1">

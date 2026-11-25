@@ -33,6 +33,7 @@ interface ParsedProductRow {
   freeStock: number;
   minStockAlert: number;
   barcode?: string;
+  priceTiers?: string;
   isExisting: boolean;
   isValid: boolean;
   errorMessage?: string;
@@ -77,14 +78,15 @@ export const CsvProductImportModal: React.FC<CsvProductImportModalProps> = ({
       'CurrentStock',
       'FreeStock',
       'MinStockAlert',
-      'Barcode'
+      'Barcode',
+      'PriceTiers'
     ];
 
     const sampleRows = [
-      ['MS-OIL-01', 'Virgin Coconut Oil 1L', 'Edible Oils', 'Bottle', '850.00', '1150.00', '50', '5', '10', '4791234567890'],
-      ['MS-FLR-02', 'All Purpose Wheat Flour 1kg', 'Baking Essentials', 'Pack', '220.00', '290.00', '120', '12', '15', '4791234567891'],
-      ['MS-SP-03', 'Ground Black Pepper 100g', 'Spices & Seasoning', 'Pack', '180.00', '240.00', '75', '0', '10', '4791234567892'],
-      ['MS-TEA-04', 'Pure Ceylon Premium Tea 400g', 'Beverages', 'Box', '650.00', '850.00', '90', '10', '10', '4791234567893']
+      ['MS-OIL-01', 'Virgin Coconut Oil 1L', 'Edible Oils', 'Bottle', '850.00', '1150.00', '50', '5', '10', '4791234567890', '5:1100|10:1050'],
+      ['MS-FLR-02', 'All Purpose Wheat Flour 1kg', 'Baking Essentials', 'Pack', '220.00', '290.00', '120', '12', '15', '4791234567891', '10:280|25:270'],
+      ['MS-SP-03', 'Ground Black Pepper 100g', 'Spices & Seasoning', 'Pack', '180.00', '240.00', '75', '0', '10', '4791234567892', ''],
+      ['MS-TEA-04', 'Pure Ceylon Premium Tea 400g', 'Beverages', 'Box', '650.00', '850.00', '90', '10', '10', '4791234567893', '12:800|24:760']
     ];
 
     const csvContent = [
@@ -142,6 +144,7 @@ export const CsvProductImportModal: React.FC<CsvProductImportModalProps> = ({
     if (['freestock', 'freepcs', 'promotionalstock', 'freeunits', 'freeqty'].includes(clean)) return 'freeStock';
     if (['minstockalert', 'minstock', 'minalert', 'alertqty', 'reorderlevel'].includes(clean)) return 'minStockAlert';
     if (['barcode', 'barcodeno', 'ean', 'upc'].includes(clean)) return 'barcode';
+    if (['pricetiers', 'tiers', 'pricingtiers', 'volumetiers', 'volumepricing', 'tierprices', 'breaks'].includes(clean)) return 'priceTiers';
     return clean;
   };
 
@@ -195,6 +198,7 @@ export const CsvProductImportModal: React.FC<CsvProductImportModalProps> = ({
         const freeStock = parseInt(rowObj.freeStock || '0', 10) || 0;
         const minStockAlert = parseInt(rowObj.minStockAlert || '10', 10) || 10;
         const barcode = rowObj.barcode ? String(rowObj.barcode).trim() : undefined;
+        const priceTiers = rowObj.priceTiers ? String(rowObj.priceTiers).trim() : undefined;
 
         const isExisting = existingSkuMap.has(sku);
         let isValid = true;
@@ -223,6 +227,7 @@ export const CsvProductImportModal: React.FC<CsvProductImportModalProps> = ({
           freeStock,
           minStockAlert,
           barcode,
+          priceTiers,
           isExisting,
           isValid,
           errorMessage
@@ -258,7 +263,8 @@ export const CsvProductImportModal: React.FC<CsvProductImportModalProps> = ({
           currentStock: r.currentStock,
           freeStock: r.freeStock,
           minStockAlert: r.minStockAlert,
-          barcode: r.barcode
+          barcode: r.barcode,
+          priceTiers: r.priceTiers
         })),
         stockMode
       };
