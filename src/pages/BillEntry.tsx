@@ -194,7 +194,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
           })
         );
         setHasDraft(true);
-      } catch (e) {}
+      } catch (e) { }
     }
   }, [
     billMode,
@@ -213,7 +213,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const handleClearForm = () => {
     try {
       localStorage.removeItem(DRAFT_KEY);
-    } catch (e) {}
+    } catch (e) { }
     setPaperBillNumber('');
     setBillItems([{ productId: '', quantity: 1, freeQuantity: 0 }]);
     setReturnItems([]);
@@ -402,31 +402,31 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
 
   const availableItems: AvailableItem[] = billMode === 'LORRY'
     ? availableLorryProducts.map((s: any) => ({
-        id: s.id,
-        productId: s.productId,
-        name: s.product.name,
-        unit: s.product.unit,
-        unitPrice: s.product.unitPrice,
-        stock: s.quantity,
-        freeStock: s.freeQuantity || 0,
-        freeRatioBuy: s.product.freeRatioBuy,
-        freeRatioGet: s.product.freeRatioGet,
-        priceTiers: s.product.priceTiers
-      }))
+      id: s.id,
+      productId: s.productId,
+      name: s.product.name,
+      unit: s.product.unit,
+      unitPrice: s.product.unitPrice,
+      stock: s.quantity,
+      freeStock: s.freeQuantity || 0,
+      freeRatioBuy: s.product.freeRatioBuy,
+      freeRatioGet: s.product.freeRatioGet,
+      priceTiers: s.product.priceTiers
+    }))
     : warehouseProducts
-        .filter(p => p.currentStock > 0 || (p.freeStock && p.freeStock > 0))
-        .map(p => ({
-          id: p.id,
-          productId: p.id,
-          name: p.name,
-          unit: p.unit,
-          unitPrice: p.unitPrice,
-          stock: p.currentStock,
-          freeStock: p.freeStock || 0,
-          freeRatioBuy: p.freeRatioBuy,
-          freeRatioGet: p.freeRatioGet,
-          priceTiers: p.priceTiers
-        }));
+      .filter(p => p.currentStock > 0 || (p.freeStock && p.freeStock > 0))
+      .map(p => ({
+        id: p.id,
+        productId: p.id,
+        name: p.name,
+        unit: p.unit,
+        unitPrice: p.unitPrice,
+        stock: p.currentStock,
+        freeStock: p.freeStock || 0,
+        freeRatioBuy: p.freeRatioBuy,
+        freeRatioGet: p.freeRatioGet,
+        priceTiers: p.priceTiers
+      }));
 
   const addItemRow = () => {
     setBillItems([...billItems, { productId: '', quantity: 1, freeQuantity: 0 }]);
@@ -699,12 +699,12 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       const previousBillsPayload =
         settlePreviousBill && customerUnpaidBills.length > 0 && parseFloat(settleAmount) > 0
           ? [
-              {
-                orderId: customerUnpaidBills[0].id,
-                amount: parseFloat(settleAmount),
-                paymentMethod: 'CASH'
-              }
-            ]
+            {
+              orderId: customerUnpaidBills[0].id,
+              amount: parseFloat(settleAmount),
+              paymentMethod: 'CASH'
+            }
+          ]
           : undefined;
 
       const formattedReturnsPayload = validReturns.map(r => ({
@@ -741,13 +741,13 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       const bottleExchangePayload =
         deliveredBottles > 0 || bottleState.returnedGood > 0 || bottleState.damaged > 0 || bottleState.missing > 0
           ? {
-              deliveredBottles,
-              returnedGoodBottles: bottleState.returnedGood,
-              damagedBottles: bottleState.damaged,
-              missingBottles: bottleState.missing,
-              chargeMissing: bottleState.chargeMissing,
-              bottleDepositRate
-            }
+            deliveredBottles,
+            returnedGoodBottles: bottleState.returnedGood,
+            damagedBottles: bottleState.damaged,
+            missingBottles: bottleState.missing,
+            chargeMissing: bottleState.chargeMissing,
+            bottleDepositRate
+          }
           : undefined;
 
       if (billMode === 'LORRY') {
@@ -809,7 +809,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       // Reset form & remove draft
       try {
         localStorage.removeItem(DRAFT_KEY);
-      } catch (e) {}
+      } catch (e) { }
       setHasDraft(false);
       setPaperBillNumber('');
       setBillItems([{ productId: '', quantity: 1, freeQuantity: 0 }]);
@@ -864,11 +864,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         <button
           type="button"
           onClick={() => handleModeSwitch('LORRY')}
-          className={`flex-1 py-3 px-4 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all ${
-            billMode === 'LORRY'
+          className={`flex-1 py-3 px-4 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all ${billMode === 'LORRY'
               ? 'bg-white text-blue-600 shadow-xs border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
+            }`}
         >
           <Truck className="w-4.5 h-4.5 shrink-0" />
           <div className="text-left">
@@ -880,11 +879,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
         <button
           type="button"
           onClick={() => handleModeSwitch('WALK_IN')}
-          className={`flex-1 py-3 px-4 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all ${
-            billMode === 'WALK_IN'
+          className={`flex-1 py-3 px-4 rounded-xl sm:rounded-2xl text-xs sm:text-sm font-bold flex items-center justify-center gap-2.5 transition-all ${billMode === 'WALK_IN'
               ? 'bg-white text-emerald-600 shadow-xs border border-slate-200/60'
               : 'text-slate-600 hover:text-slate-900 hover:bg-slate-200/50'
-          }`}
+            }`}
         >
           <Building2 className="w-4.5 h-4.5 shrink-0" />
           <div className="text-left">
@@ -935,11 +933,10 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                 <button
                   key={lorry.id}
                   onClick={() => setSelectedLorryId(lorry.id)}
-                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex-1 sm:flex-initial text-center ${
-                    isSelected
+                  className={`px-3.5 py-2 rounded-xl text-xs sm:text-sm font-bold transition-all whitespace-nowrap flex-1 sm:flex-initial text-center ${isSelected
                       ? 'bg-blue-600 text-white shadow-sm'
                       : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                  }`}
+                    }`}
                 >
                   {lorry.vehicleNumber}
                 </button>
@@ -968,9 +965,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       <div className="w-full bg-slate-200/80 border border-slate-300 rounded-3xl shadow-sm p-5 sm:p-6 lg:p-8 space-y-6">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-300/80 pb-4">
           <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${
-              billMode === 'LORRY' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
-            }`}>
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 shadow-2xs ${billMode === 'LORRY' ? 'bg-blue-600 text-white' : 'bg-emerald-600 text-white'
+              }`}>
               <FileText className="w-5 h-5" />
             </div>
             <div>
@@ -995,983 +991,978 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
             <button
               type="button"
               onClick={addItemRow}
-              className={`flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer shadow-2xs ${
-                billMode === 'LORRY'
+              className={`flex items-center gap-1.5 px-4 py-2 text-xs sm:text-sm font-semibold rounded-xl transition-colors cursor-pointer shadow-2xs ${billMode === 'LORRY'
                   ? 'text-white bg-blue-600 hover:bg-blue-700 shadow-blue-500/20'
                   : 'text-white bg-emerald-600 hover:bg-emerald-700 shadow-emerald-500/20'
-              }`}
+                }`}
             >
               <Plus className="w-4 h-4" /> <span>Add Item Line</span>
             </button>
           </div>
         </div>
 
-          <form onSubmit={handleSubmitBill} className="space-y-4">
-            {/* Top row: Paper Bill Number & Customer Selection */}
-            <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-              <div>
-                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
-                  {billMode === 'LORRY' ? "Driver's Paper Bill # (Slip / Invoice No)" : 'Office / Counter Receipt # (Optional)'}
-                </label>
-                <input
-                  type="text"
-                  value={paperBillNumber}
-                  onChange={(e) => setPaperBillNumber(e.target.value)}
-                  placeholder={billMode === 'LORRY' ? 'e.g. SLIP-1082 or B-492' : 'e.g. COUNTER-101 (or leave blank)'}
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                />
-              </div>
+        <form onSubmit={handleSubmitBill} className="space-y-4">
+          {/* Top row: Paper Bill Number & Customer Selection */}
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+            <div>
+              <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                {billMode === 'LORRY' ? "Driver's Paper Bill # (Slip / Invoice No)" : 'Office / Counter Receipt # (Optional)'}
+              </label>
+              <input
+                type="text"
+                value={paperBillNumber}
+                onChange={(e) => setPaperBillNumber(e.target.value)}
+                placeholder={billMode === 'LORRY' ? 'e.g. SLIP-1082 or B-492' : 'e.g. COUNTER-101 (or leave blank)'}
+                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+              />
+            </div>
 
-              <div>
-                <div className="flex items-center justify-between mb-1.5">
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
-                    {billMode === 'LORRY' ? 'Retail Customer / Outlet *' : 'Customer Account *'}
-                  </label>
-                  <button
-                    type="button"
-                    onClick={() => setShowAddCustomerModal(true)}
-                    className="text-[11px] font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition"
-                    title="Register New Customer"
-                  >
-                    <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
-                    <span>New Customer</span>
-                  </button>
-                </div>
-                <select
-                  value={selectedCustomerId}
-                  onChange={(e) => setSelectedCustomerId(e.target.value)}
-                  required
-                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+            <div>
+              <div className="flex items-center justify-between mb-1.5">
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block">
+                  {billMode === 'LORRY' ? 'Retail Customer / Outlet *' : 'Customer Account *'}
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setShowAddCustomerModal(true)}
+                  className="text-[11px] font-bold text-blue-700 hover:text-blue-800 flex items-center gap-1 cursor-pointer transition"
+                  title="Register New Customer"
                 >
-                  {billMode === 'WALK_IN' ? (
-                    <>
-                      <option value="walk-in">⚡ Walk-in / Cash Customer (Direct Counter)</option>
-                      <optgroup label="Registered Account Holders (Visiting Counter)">
-                        {customers.map((c) => (
+                  <Plus className="w-3.5 h-3.5 stroke-[2.5]" />
+                  <span>New Customer</span>
+                </button>
+              </div>
+              <select
+                value={selectedCustomerId}
+                onChange={(e) => setSelectedCustomerId(e.target.value)}
+                required
+                className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+              >
+                {billMode === 'WALK_IN' ? (
+                  <>
+                    <option value="walk-in">⚡ Walk-in / Cash Customer (Direct Counter)</option>
+                    <optgroup label="Registered Account Holders (Visiting Counter)">
+                      {customers.map((c) => (
+                        <option key={c.id} value={c.id}>
+                          {c.code} - {c.name} {c.discountPercentage > 0 ? `(${c.discountPercentage}% Disc)` : ''}
+                        </option>
+                      ))}
+                    </optgroup>
+                  </>
+                ) : (
+                  <>
+                    <option value="">-- Choose Retail Customer --</option>
+                    {routeCustomers.length > 0 && (
+                      <optgroup label={`Route Customers (${selectedLorry?.route?.name || 'Route'})`}>
+                        {routeCustomers.map((c) => (
                           <option key={c.id} value={c.id}>
                             {c.code} - {c.name} {c.discountPercentage > 0 ? `(${c.discountPercentage}% Disc)` : ''}
                           </option>
                         ))}
                       </optgroup>
-                    </>
-                  ) : (
-                    <>
-                      <option value="">-- Choose Retail Customer --</option>
-                      {routeCustomers.length > 0 && (
-                        <optgroup label={`Route Customers (${selectedLorry?.route?.name || 'Route'})`}>
-                          {routeCustomers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.code} - {c.name} {c.discountPercentage > 0 ? `(${c.discountPercentage}% Disc)` : ''}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                      {otherCustomers.length > 0 && (
-                        <optgroup label="Other Customers">
-                          {otherCustomers.map((c) => (
-                            <option key={c.id} value={c.id}>
-                              {c.code} - {c.name}
-                            </option>
-                          ))}
-                        </optgroup>
-                      )}
-                    </>
-                  )}
-                </select>
-              </div>
+                    )}
+                    {otherCustomers.length > 0 && (
+                      <optgroup label="Other Customers">
+                        {otherCustomers.map((c) => (
+                          <option key={c.id} value={c.id}>
+                            {c.code} - {c.name}
+                          </option>
+                        ))}
+                      </optgroup>
+                    )}
+                  </>
+                )}
+              </select>
             </div>
+          </div>
 
-            {/* Customer Credit Risk & Aging Summary */}
-            {selectedCustomer && selectedCustomer.creditRisk && (
-              <div className="animate-fadeIn">
-                <CustomerAgingCard creditRisk={selectedCustomer.creditRisk} currency={formatMoney(0).split(' ')[0]} />
-              </div>
-            )}
+          {/* Customer Credit Risk & Aging Summary */}
+          {selectedCustomer && selectedCustomer.creditRisk && (
+            <div className="animate-fadeIn">
+              <CustomerAgingCard creditRisk={selectedCustomer.creditRisk} currency={formatMoney(0).split(' ')[0]} />
+            </div>
+          )}
 
-            {/* Bill-to-Bill Knock-off: Previous Bill Clearance Banner */}
-            {(() => {
-              if (!selectedCustomerId || selectedCustomerId === 'walk-in' || customerUnpaidBills.length === 0) {
-                return null;
-              }
-              const firstBill = customerUnpaidBills[0];
-              if (!firstBill) return null;
-              const dueAmount = (firstBill.balanceAmount !== undefined && firstBill.balanceAmount > 0)
-                ? firstBill.balanceAmount
-                : Math.max(0, firstBill.netTotal - (firstBill.paidAmount || 0));
+          {/* Bill-to-Bill Knock-off: Previous Bill Clearance Banner */}
+          {(() => {
+            if (!selectedCustomerId || selectedCustomerId === 'walk-in' || customerUnpaidBills.length === 0) {
+              return null;
+            }
+            const firstBill = customerUnpaidBills[0];
+            if (!firstBill) return null;
+            const dueAmount = (firstBill.balanceAmount !== undefined && firstBill.balanceAmount > 0)
+              ? firstBill.balanceAmount
+              : Math.max(0, firstBill.netTotal - (firstBill.paidAmount || 0));
 
-              return (
-                <div className="p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-2xl animate-fadeIn space-y-2.5">
-                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
-                    <div className="flex items-center gap-2">
-                      <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 uppercase tracking-wide">
-                        Bill-To-Bill Knock-off
-                      </span>
-                      <span className="text-xs font-bold text-slate-800">
-                        Unpaid Previous Delivery Bill Found
-                      </span>
-                    </div>
-                    <label className="flex items-center gap-2 cursor-pointer select-none">
-                      <input
-                        type="checkbox"
-                        checked={settlePreviousBill}
-                        onChange={(e) => setSettlePreviousBill(e.target.checked)}
-                        className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
-                      />
-                      <span className="text-xs font-bold text-slate-900">
-                        Collect & Settle Previous Bill Now
-                      </span>
-                    </label>
-                  </div>
-
-                  {settlePreviousBill && (
-                    <div className="p-2.5 bg-white rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
-                      <div className="flex items-center gap-2 flex-wrap">
-                        <span className="font-mono font-bold text-slate-900">
-                          Bill #{firstBill.paperBillNumber || firstBill.orderNumber}
-                        </span>
-                        <span className="text-slate-400">•</span>
-                        <span className="text-slate-500">
-                          Total {formatMoney(firstBill.netTotal)}
-                        </span>
-                        <span className="text-slate-400">•</span>
-                        <span className="font-mono font-bold text-rose-600">
-                          Due: {formatMoney(dueAmount)}
-                        </span>
-                        {firstBill.daysOpen !== undefined && (
-                          <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">
-                            {firstBill.daysOpen === 0 ? 'Today' : `${firstBill.daysOpen}d ago`}
-                          </span>
-                        )}
-                      </div>
-
-                      <div className="flex items-center gap-2 shrink-0">
-                        <span className="text-[11px] font-semibold text-slate-600">Settle Amount:</span>
-                        <div className="relative w-28">
-                          <input
-                            type="number"
-                            step="0.01"
-                            min="0.01"
-                            max={dueAmount}
-                            value={settleAmount}
-                            onChange={(e) => setSettleAmount(e.target.value)}
-                            className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
-                          />
-                        </div>
-                      </div>
-                    </div>
-                  )}
-                </div>
-              );
-            })()}
-
-            {/* Pending Pre-Orders Alert Banner (Auto-Prompting) */}
-            {selectedCustomerId && selectedCustomerId !== 'walk-in' && customerPreOrders.length > 0 && (
-              <div className="p-3.5 bg-indigo-50/70 border border-indigo-200/90 rounded-2xl animate-fadeIn space-y-2.5">
-                <div className="flex items-center justify-between">
+            return (
+              <div className="p-3.5 bg-amber-50/70 border border-amber-200/90 rounded-2xl animate-fadeIn space-y-2.5">
+                <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
                   <div className="flex items-center gap-2">
-                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-200/80 text-indigo-900 uppercase tracking-wide flex items-center gap-1">
-                      <Clock className="w-3 h-3 text-indigo-700" />
-                      Pending Pre-Orders
+                    <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-amber-200/80 text-amber-900 uppercase tracking-wide">
+                      Bill-To-Bill Knock-off
                     </span>
                     <span className="text-xs font-bold text-slate-800">
-                      Customer has {customerPreOrders.length} advance booking{customerPreOrders.length > 1 ? 's' : ''}
+                      Unpaid Previous Delivery Bill Found
                     </span>
                   </div>
-                  <span className="text-[11px] font-mono text-indigo-700 font-bold bg-indigo-100/60 px-2 py-0.5 rounded-lg">
-                    Auto-Fill Available
-                  </span>
+                  <label className="flex items-center gap-2 cursor-pointer select-none">
+                    <input
+                      type="checkbox"
+                      checked={settlePreviousBill}
+                      onChange={(e) => setSettlePreviousBill(e.target.checked)}
+                      className="w-4 h-4 text-blue-600 rounded border-slate-300 focus:ring-blue-500"
+                    />
+                    <span className="text-xs font-bold text-slate-900">
+                      Collect & Settle Previous Bill Now
+                    </span>
+                  </label>
                 </div>
 
-                <div className="space-y-1.5">
-                  {customerPreOrders.map((po) => (
-                    <div key={po.id} className="p-2.5 bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-1.5">
-                      <div className="flex items-center justify-between text-[11px] text-slate-500">
-                        <span className="font-mono font-bold text-slate-800">{po.preOrderNumber}</span>
-                        <span>{new Date(po.createdAt).toLocaleDateString()}</span>
+                {settlePreviousBill && (
+                  <div className="p-2.5 bg-white rounded-xl border border-amber-200 flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="font-mono font-bold text-slate-900">
+                        Bill #{firstBill.paperBillNumber || firstBill.orderNumber}
+                      </span>
+                      <span className="text-slate-400">•</span>
+                      <span className="text-slate-500">
+                        Total {formatMoney(firstBill.netTotal)}
+                      </span>
+                      <span className="text-slate-400">•</span>
+                      <span className="font-mono font-bold text-rose-600">
+                        Due: {formatMoney(dueAmount)}
+                      </span>
+                      {firstBill.daysOpen !== undefined && (
+                        <span className="text-[10px] text-amber-700 bg-amber-100 px-1.5 py-0.5 rounded font-medium">
+                          {firstBill.daysOpen === 0 ? 'Today' : `${firstBill.daysOpen}d ago`}
+                        </span>
+                      )}
+                    </div>
+
+                    <div className="flex items-center gap-2 shrink-0">
+                      <span className="text-[11px] font-semibold text-slate-600">Settle Amount:</span>
+                      <div className="relative w-28">
+                        <input
+                          type="number"
+                          step="0.01"
+                          min="0.01"
+                          max={dueAmount}
+                          value={settleAmount}
+                          onChange={(e) => setSettleAmount(e.target.value)}
+                          className="w-full bg-slate-50 border border-slate-200 rounded-lg px-2.5 py-1 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-right"
+                        />
                       </div>
-                      <div className="divide-y divide-slate-100">
-                        {po.items.map((item) => {
-                          const lorryStock = billMode === 'LORRY'
-                            ? availableLorryProducts.find((p: any) => p.id === item.productId || p.productId === item.productId)
-                            : null;
-                          const availQty = billMode === 'LORRY'
-                            ? (lorryStock?.quantity || 0)
-                            : (item.product?.currentStock || 0);
-                          const inStock = availQty > 0;
-                          const alreadyInRows = billItems.some((r) => r.productId === item.productId && r.quantity > 0);
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
 
-                          return (
-                            <div key={item.id} className="pt-1.5 pb-0.5 flex items-center justify-between gap-2 text-xs">
-                              <div className="min-w-0 flex-1">
-                                <span className="font-semibold text-slate-800 truncate block">
-                                  {item.product?.name}
-                                </span>
-                                <div className="flex items-center gap-2 text-[10px] mt-0.5">
-                                  <span className="text-slate-500 font-mono">Pre-Ordered: {item.quantity} u</span>
-                                  <span>•</span>
-                                  {inStock ? (
-                                    <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
-                                      {billMode === 'LORRY' ? `On Lorry: ${availQty}` : `In Warehouse: ${availQty}`}
-                                    </span>
-                                  ) : (
-                                    <span className="text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
-                                      Still Out of Stock (0 avail)
-                                    </span>
-                                  )}
-                                </div>
-                              </div>
+          {/* Pending Pre-Orders Alert Banner (Auto-Prompting) */}
+          {selectedCustomerId && selectedCustomerId !== 'walk-in' && customerPreOrders.length > 0 && (
+            <div className="p-3.5 bg-indigo-50/70 border border-indigo-200/90 rounded-2xl animate-fadeIn space-y-2.5">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-extrabold px-2 py-0.5 rounded-md bg-indigo-200/80 text-indigo-900 uppercase tracking-wide flex items-center gap-1">
+                    <Clock className="w-3 h-3 text-indigo-700" />
+                    Pending Pre-Orders
+                  </span>
+                  <span className="text-xs font-bold text-slate-800">
+                    Customer has {customerPreOrders.length} advance booking{customerPreOrders.length > 1 ? 's' : ''}
+                  </span>
+                </div>
+                <span className="text-[11px] font-mono text-indigo-700 font-bold bg-indigo-100/60 px-2 py-0.5 rounded-lg">
+                  Auto-Fill Available
+                </span>
+              </div>
 
-                              <div className="shrink-0 flex items-center gap-1.5">
-                                {inStock && !alreadyInRows && (
-                                  <button
-                                    type="button"
-                                    onClick={() => handleAddPreOrderToRows(po.id, item)}
-                                    className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-1"
-                                  >
-                                    <Plus className="w-3 h-3" /> Add to Bill
-                                  </button>
-                                )}
-                                {alreadyInRows && (
-                                  <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
-                                    ✓ Added to Bill
+              <div className="space-y-1.5">
+                {customerPreOrders.map((po) => (
+                  <div key={po.id} className="p-2.5 bg-white rounded-xl border border-indigo-100 shadow-2xs space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px] text-slate-500">
+                      <span className="font-mono font-bold text-slate-800">{po.preOrderNumber}</span>
+                      <span>{new Date(po.createdAt).toLocaleDateString()}</span>
+                    </div>
+                    <div className="divide-y divide-slate-100">
+                      {po.items.map((item) => {
+                        const lorryStock = billMode === 'LORRY'
+                          ? availableLorryProducts.find((p: any) => p.id === item.productId || p.productId === item.productId)
+                          : null;
+                        const availQty = billMode === 'LORRY'
+                          ? (lorryStock?.quantity || 0)
+                          : (item.product?.currentStock || 0);
+                        const inStock = availQty > 0;
+                        const alreadyInRows = billItems.some((r) => r.productId === item.productId && r.quantity > 0);
+
+                        return (
+                          <div key={item.id} className="pt-1.5 pb-0.5 flex items-center justify-between gap-2 text-xs">
+                            <div className="min-w-0 flex-1">
+                              <span className="font-semibold text-slate-800 truncate block">
+                                {item.product?.name}
+                              </span>
+                              <div className="flex items-center gap-2 text-[10px] mt-0.5">
+                                <span className="text-slate-500 font-mono">Pre-Ordered: {item.quantity} u</span>
+                                <span>•</span>
+                                {inStock ? (
+                                  <span className="text-emerald-700 font-bold bg-emerald-50 px-1.5 py-0.2 rounded border border-emerald-200">
+                                    {billMode === 'LORRY' ? `On Lorry: ${availQty}` : `In Warehouse: ${availQty}`}
+                                  </span>
+                                ) : (
+                                  <span className="text-slate-400 bg-slate-100 px-1.5 py-0.2 rounded font-medium">
+                                    Still Out of Stock (0 avail)
                                   </span>
                                 )}
                               </div>
                             </div>
-                          );
-                        })}
-                      </div>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
 
-            {/* Walk-in Customer Optional Quick Name / Phone */}
-            {billMode === 'WALK_IN' && selectedCustomerId === 'walk-in' && (
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl">
-                <div>
-                  <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
-                    Walk-in Customer Name (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={walkInName}
-                    onChange={(e) => setWalkInName(e.target.value)}
-                    placeholder="e.g. Kasun Silva or City Stores"
-                    className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-                <div>
-                  <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
-                    Contact Phone (Optional)
-                  </label>
-                  <input
-                    type="text"
-                    value={walkInPhone}
-                    onChange={(e) => setWalkInPhone(e.target.value)}
-                    placeholder="e.g. 077 123 4567"
-                    className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
-                  />
-                </div>
-              </div>
-            )}
-
-            {/* Bill Line Items Table */}
-            <div className="space-y-2 pt-2">
-              <div className="flex items-center justify-between">
-                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                  {billMode === 'LORRY' ? 'Items Sold From Lorry Stock' : 'Items Sold From Central Warehouse Stock'}
-                </span>
-                <div className="flex items-center gap-2">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      if (!selectedCustomerId || selectedCustomerId === 'walk-in') {
-                        setErrorMessage('Please select a customer first to take a pre-order.');
-                        return;
-                      }
-                      setShowPreOrderModal(true);
-                    }}
-                    className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer active:scale-95"
-                    title="Take an advance booking / pre-order for an out-of-stock item"
-                  >
-                    <Clock className="w-3.5 h-3.5 text-indigo-600" />
-                    <span>+ Pre-Order Out-of-Stock</span>
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => setShowBarcodeScanner(true)}
-                    className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer active:scale-95"
-                    title="Scan item barcode with camera"
-                  >
-                    <Camera className="w-3.5 h-3.5 text-blue-400" />
-                    <span>Scan Barcode</span>
-                  </button>
-                </div>
-              </div>
-
-              {availableItems.length === 0 ? (
-                <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs sm:text-sm text-amber-800">
-                  {billMode === 'LORRY'
-                    ? '⚠️ This lorry has no floating stock loaded. Please perform a Morning Lorry Loading first.'
-                    : '⚠️ Central Warehouse has 0 items in stock.'}
-                </div>
-              ) : (
-                billItems.map((item, index) => {
-                  const itemInfo = availableItems.find(s => s.productId === item.productId);
-                  const price = itemInfo ? itemInfo.unitPrice : 0;
-                  const itemGross = price * (item.quantity || 0);
-                  const itemDiscount = calculateItemDiscount(item);
-                  const lineTotal = Math.max(0, itemGross - itemDiscount);
-                  const hasScheme = Boolean(itemInfo && (itemInfo.freeRatioBuy ?? 0) > 0 && (itemInfo.freeRatioGet ?? 0) > 0);
-
-                  return (
-                    <div
-                      key={index}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs"
-                    >
-                      {/* Product Selector */}
-                      <div className="flex-1 w-full min-w-0">
-                        <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">
-                          Product &amp; Floating Stock
-                        </label>
-                        <select
-                          value={item.productId}
-                          onChange={(e) => updateItemRow(index, 'productId', e.target.value)}
-                          required
-                          className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
-                        >
-                          <option value="">
-                            {billMode === 'LORRY' ? '-- Select Item on Lorry --' : '-- Select Item in Warehouse --'}
-                          </option>
-                          {availableItems.map((s) => (
-                            <option key={s.productId} value={s.productId}>
-                              {s.name} ({billMode === 'LORRY' ? 'Lorry' : 'Warehouse'}: {s.stock} paid + {s.freeStock} free)
-                              {s.freeRatioBuy && s.freeRatioBuy > 0 && s.freeRatioGet
-                                ? ` ★ Promo: Buy ${s.freeRatioBuy} get ${s.freeRatioGet} Free`
-                                : ''} - {formatMoney(s.unitPrice)}
-                            </option>
-                          ))}
-                        </select>
-                      </div>
-
-                      {/* Quantity & Discount Controls Grid */}
-                      <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
-                        {/* Paid Qty */}
-                        <div className="w-20 sm:w-22">
-                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-center mb-1">
-                            Paid Qty
-                          </label>
-                          <input
-                            type="number"
-                            min="1"
-                            max={itemInfo ? (itemInfo.stock + itemInfo.freeStock) : 9999}
-                            value={item.quantity || ''}
-                            onChange={(e) => updateItemRow(index, 'quantity', parseInt(e.target.value, 10) || 0)}
-                            placeholder="Paid Qty"
-                            title="Billed / Paid Quantity"
-                            required
-                            className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center shadow-2xs"
-                          />
-                        </div>
-
-                        {/* Free Issue Qty */}
-                        <div className="w-20 sm:w-22 relative">
-                          <label className="block text-[9px] font-bold text-emerald-800 uppercase tracking-wider text-center mb-1">
-                            Free Qty
-                          </label>
-                          <input
-                            type="number"
-                            min="0"
-                            max={itemInfo ? (itemInfo.stock + itemInfo.freeStock) : 9999}
-                            value={item.freeQuantity || ''}
-                            onChange={(e) => updateItemRow(index, 'freeQuantity', parseInt(e.target.value, 10) || 0)}
-                            placeholder="0 Free"
-                            title="Promotional Free Issue (Cost: Rs. 0.00)"
-                            className="w-full bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center shadow-2xs"
-                          />
-                          {hasScheme && (item.quantity ?? 0) > 0 ? (
-                            <span className="hidden sm:inline-block absolute top-0 right-1 px-1 bg-emerald-600 text-[8px] font-bold text-white rounded shadow-2xs">
-                              Auto
-                            </span>
-                          ) : null}
-                        </div>
-
-                        {/* Item Discount */}
-                        <div className="w-28 sm:w-32">
-                          <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-wider text-center mb-1">
-                            Item Disc
-                          </label>
-                          <div className="flex items-center bg-white border border-slate-300 rounded-xl p-0.5 shadow-2xs focus-within:ring-2 focus-within:ring-amber-400">
-                            <button
-                              type="button"
-                              onClick={() => updateItemDiscountType(index, item.discountType === 'Rs' ? '%' : 'Rs')}
-                              className={`px-1.5 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${
-                                item.discountType === 'Rs'
-                                  ? 'bg-amber-500 text-white shadow-2xs'
-                                  : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
-                              }`}
-                              title="Toggle percentage (%) or flat amount (Rs)"
-                            >
-                              {item.discountType === 'Rs' ? 'Rs' : '%'}
-                            </button>
-                            <input
-                              type="number"
-                              min="0"
-                              placeholder="0"
-                              value={item.discountType === 'Rs' ? (item.discountAmount ?? '') : (item.discountPercent ?? '')}
-                              onChange={(e) => updateItemDiscountValue(index, parseFloat(e.target.value) || 0)}
-                              className="w-full bg-transparent px-1 py-1 text-xs font-bold text-slate-900 focus:outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                            />
-                          </div>
-                        </div>
-
-                        {/* Line Total */}
-                        <div className="w-24 sm:w-28 text-right pr-1">
-                          <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-right mb-1">
-                            Line Total
-                          </label>
-                          <div className="font-mono text-xs font-bold text-slate-900 py-1">
-                            {formatMoney(lineTotal)}
-                          </div>
-                          {itemDiscount > 0 && (
-                            <div className="text-[10px] font-mono font-semibold text-amber-600">
-                              -{formatMoney(itemDiscount)}
+                            <div className="shrink-0 flex items-center gap-1.5">
+                              {inStock && !alreadyInRows && (
+                                <button
+                                  type="button"
+                                  onClick={() => handleAddPreOrderToRows(po.id, item)}
+                                  className="px-2.5 py-1 text-[11px] font-bold text-indigo-700 bg-indigo-50 hover:bg-indigo-100 border border-indigo-200 rounded-lg transition active:scale-95 cursor-pointer flex items-center gap-1"
+                                >
+                                  <Plus className="w-3 h-3" /> Add to Bill
+                                </button>
+                              )}
+                              {alreadyInRows && (
+                                <span className="text-[10px] font-bold text-emerald-700 bg-emerald-50 px-2 py-0.5 rounded-lg border border-emerald-200">
+                                  ✓ Added to Bill
+                                </span>
+                              )}
                             </div>
-                          )}
-                        </div>
-
-                        {/* Delete */}
-                        <div className="pt-3 sm:pt-4">
-                          <button
-                            type="button"
-                            onClick={() => removeItemRow(index)}
-                            className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
-                            title="Remove item line"
-                          >
-                            <Trash2 className="w-4 h-4" />
-                          </button>
-                        </div>
-                      </div>
+                          </div>
+                        );
+                      })}
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                ))}
+              </div>
             </div>
+          )}
 
-            {/* Return Goods / Damage Goods (Credit Deductions) */}
-            <div className="space-y-2 pt-3 border-t border-dashed border-slate-200">
-              <div className="flex items-center justify-between">
-                <div className="flex items-center gap-2">
-                  <RotateCcw className="w-4 h-4 text-amber-600" />
-                  <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
-                    Customer Returns / Damage Goods (Credit Deduction)
-                  </span>
-                  {returnItems.length > 0 && (
-                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
-                      {returnItems.length} {returnItems.length === 1 ? 'item' : 'items'}
-                    </span>
-                  )}
-                </div>
+          {/* Walk-in Customer Optional Quick Name / Phone */}
+          {billMode === 'WALK_IN' && selectedCustomerId === 'walk-in' && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 p-3.5 bg-emerald-50/50 border border-emerald-100 rounded-2xl">
+              <div>
+                <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                  Walk-in Customer Name (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={walkInName}
+                  onChange={(e) => setWalkInName(e.target.value)}
+                  placeholder="e.g. Kasun Silva or City Stores"
+                  className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+              <div>
+                <label className="text-[11px] font-bold text-emerald-800 uppercase tracking-wider block mb-1">
+                  Contact Phone (Optional)
+                </label>
+                <input
+                  type="text"
+                  value={walkInPhone}
+                  onChange={(e) => setWalkInPhone(e.target.value)}
+                  placeholder="e.g. 077 123 4567"
+                  className="w-full bg-white border border-emerald-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-emerald-500"
+                />
+              </div>
+            </div>
+          )}
+
+          {/* Bill Line Items Table */}
+          <div className="space-y-2 pt-2">
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                {billMode === 'LORRY' ? 'Items Sold From Lorry Stock' : 'Items Sold From Central Warehouse Stock'}
+              </span>
+              <div className="flex items-center gap-2">
                 <button
                   type="button"
-                  onClick={addReturnRow}
-                  className="text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-xl transition flex items-center gap-1 border border-amber-200/60"
+                  onClick={() => {
+                    if (!selectedCustomerId || selectedCustomerId === 'walk-in') {
+                      setErrorMessage('Please select a customer first to take a pre-order.');
+                      return;
+                    }
+                    setShowPreOrderModal(true);
+                  }}
+                  className="px-2.5 py-1.5 bg-indigo-50 hover:bg-indigo-100 text-indigo-700 border border-indigo-200/90 rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer active:scale-95"
+                  title="Take an advance booking / pre-order for an out-of-stock item"
                 >
-                  <Plus className="w-3.5 h-3.5" /> Add Return / Damage
+                  <Clock className="w-3.5 h-3.5 text-indigo-600" />
+                  <span>+ Pre-Order Out-of-Stock</span>
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setShowBarcodeScanner(true)}
+                  className="px-2.5 py-1.5 bg-slate-900 hover:bg-slate-800 text-white rounded-xl text-xs font-bold flex items-center gap-1.5 shadow-2xs transition cursor-pointer active:scale-95"
+                  title="Scan item barcode with camera"
+                >
+                  <Camera className="w-3.5 h-3.5 text-blue-400" />
+                  <span>Scan Barcode</span>
                 </button>
               </div>
+            </div>
 
-              {loadingReturnables && (
-                <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2 text-xs text-slate-500">
-                  <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
-                  <span>Loading purchased products from customer's completed bills...</span>
-                </div>
-              )}
+            {availableItems.length === 0 ? (
+              <div className="p-4 bg-amber-50 border border-amber-200 rounded-2xl text-xs sm:text-sm text-amber-800">
+                {billMode === 'LORRY'
+                  ? '⚠️ This lorry has no floating stock loaded. Please perform a Morning Lorry Loading first.'
+                  : '⚠️ Central Warehouse has 0 items in stock.'}
+              </div>
+            ) : (
+              billItems.map((item, index) => {
+                const itemInfo = availableItems.find(s => s.productId === item.productId);
+                const price = itemInfo ? itemInfo.unitPrice : 0;
+                const itemGross = price * (item.quantity || 0);
+                const itemDiscount = calculateItemDiscount(item);
+                const lineTotal = Math.max(0, itemGross - itemDiscount);
+                const hasScheme = Boolean(itemInfo && (itemInfo.freeRatioBuy ?? 0) > 0 && (itemInfo.freeRatioGet ?? 0) > 0);
 
-              {selectedCustomerId && !loadingReturnables && customerReturnableProducts.length === 0 && (
-                <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex items-center gap-2 text-xs text-amber-800">
-                  <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
-                  <span>No completed bills found for this customer. Only products previously purchased in completed bills can be returned.</span>
-                </div>
-              )}
-
-              {returnItems.length === 0 ? (
-                <div className="p-3 bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-500">
-                  <span>No returned or damaged items added for this bill.</span>
-                  <button
-                    type="button"
-                    onClick={addReturnRow}
-                    className="text-xs text-amber-700 font-semibold hover:underline"
+                return (
+                  <div
+                    key={index}
+                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-3 p-3.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs"
                   >
-                    + Add Return / Damage
-                  </button>
-                </div>
-              ) : (
-                returnItems.map((ret, index) => {
-                  const prod = warehouseProducts.find(p => p.id === ret.productId);
-                  const rate = ret.unitPrice !== undefined ? ret.unitPrice : (prod ? prod.unitPrice : 0);
-                  const lineReturnTotal = rate * (ret.quantity || 0);
+                    {/* Product Selector */}
+                    <div className="flex-1 w-full min-w-0">
+                      <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider mb-1">
+                        Product &amp; Floating Stock
+                      </label>
+                      <select
+                        value={item.productId}
+                        onChange={(e) => updateItemRow(index, 'productId', e.target.value)}
+                        required
+                        className="w-full bg-white border border-slate-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                      >
+                        <option value="">
+                          {billMode === 'LORRY' ? '-- Select Item on Lorry --' : '-- Select Item in Warehouse --'}
+                        </option>
+                        {availableItems.map((s) => (
+                          <option key={s.productId} value={s.productId}>
+                            {s.name} ({billMode === 'LORRY' ? 'Lorry' : 'Warehouse'}: {s.stock} paid + {s.freeStock} free)
+                            {s.freeRatioBuy && s.freeRatioBuy > 0 && s.freeRatioGet
+                              ? ` ★ Promo: Buy ${s.freeRatioBuy} get ${s.freeRatioGet} Free`
+                              : ''} - {formatMoney(s.unitPrice)}
+                          </option>
+                        ))}
+                      </select>
+                    </div>
 
-                  return (
-                    <div
-                      key={index}
-                      className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-3.5 bg-amber-100/90 border border-amber-300 rounded-2xl shadow-2xs"
-                    >
-                      {/* Condition / Return Type */}
-                      <div className="w-full sm:w-44 shrink-0">
-                        <select
-                          value={ret.returnType}
-                          onChange={(e) => updateReturnRow(index, 'returnType', e.target.value as any)}
-                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
-                        >
-                          <option value="DAMAGE">💥 Damaged / Expired</option>
-                          <option value="RESALE">✨ Good Condition</option>
-                        </select>
-                      </div>
-
-                      {/* Product Selector */}
-                      <div className="flex-1 w-full">
-                        <select
-                          value={ret.productId}
-                          onChange={(e) => updateReturnRow(index, 'productId', e.target.value)}
-                          required
-                          className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
-                        >
-                          <option value="">-- Select Returned Product --</option>
-                          {customerReturnableProducts.length > 0 ? (
-                            customerReturnableProducts.map((rp) => (
-                              <option key={rp.productId} value={rp.productId}>
-                                {rp.product.name} ({rp.product.sku}) - Max: {rp.maxReturnableQty} {rp.product.unit || 'pcs'} @ {formatMoney(rp.latestUnitPrice)}
-                              </option>
-                            ))
-                          ) : (
-                            warehouseProducts.map((p) => (
-                              <option key={p.id} value={p.id}>
-                                {p.name} ({p.sku}) - Price: {formatMoney(p.unitPrice)}
-                              </option>
-                            ))
-                          )}
-                        </select>
-                      </div>
-
-                      {/* Return Quantity */}
-                      <div className="w-20">
+                    {/* Quantity & Discount Controls Grid */}
+                    <div className="flex flex-wrap sm:flex-nowrap items-center gap-2.5 shrink-0">
+                      {/* Paid Qty */}
+                      <div className="w-20 sm:w-22">
+                        <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-center mb-1">
+                          Paid Qty
+                        </label>
                         <input
                           type="number"
                           min="1"
-                          value={ret.quantity || ''}
-                          onChange={(e) => updateReturnRow(index, 'quantity', parseInt(e.target.value, 10) || 0)}
-                          placeholder="Qty"
-                          title="Return Quantity"
+                          max={itemInfo ? (itemInfo.stock + itemInfo.freeStock) : 9999}
+                          value={item.quantity || ''}
+                          onChange={(e) => updateItemRow(index, 'quantity', parseInt(e.target.value, 10) || 0)}
+                          placeholder="Paid Qty"
+                          title="Billed / Paid Quantity"
                           required
-                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center shadow-2xs"
+                          className="w-full bg-white border border-slate-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 text-center shadow-2xs"
                         />
                       </div>
 
-                      {/* Credit Rate per unit */}
-                      <div className="w-24">
+                      {/* Free Issue Qty */}
+                      <div className="w-20 sm:w-22 relative">
+                        <label className="block text-[9px] font-bold text-emerald-800 uppercase tracking-wider text-center mb-1">
+                          Free Qty
+                        </label>
                         <input
                           type="number"
-                          step="0.01"
                           min="0"
-                          value={ret.unitPrice !== undefined ? ret.unitPrice : ''}
-                          onChange={(e) => updateReturnRow(index, 'unitPrice', parseFloat(e.target.value) || 0)}
-                          placeholder="Rate"
-                          title="Return Credit Rate"
-                          className="w-full bg-white border border-amber-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right shadow-2xs"
+                          max={itemInfo ? (itemInfo.stock + itemInfo.freeStock) : 9999}
+                          value={item.freeQuantity || ''}
+                          onChange={(e) => updateItemRow(index, 'freeQuantity', parseInt(e.target.value, 10) || 0)}
+                          placeholder="0 Free"
+                          title="Promotional Free Issue (Cost: Rs. 0.00)"
+                          className="w-full bg-emerald-50 border border-emerald-300 text-emerald-900 rounded-xl px-2 py-2 text-xs font-bold focus:outline-none focus:ring-2 focus:ring-emerald-500 text-center shadow-2xs"
                         />
+                        {hasScheme && (item.quantity ?? 0) > 0 ? (
+                          <span className="hidden sm:inline-block absolute top-0 right-1 px-1 bg-emerald-600 text-[8px] font-bold text-white rounded shadow-2xs">
+                            Auto
+                          </span>
+                        ) : null}
                       </div>
 
-                      {/* Reason / Notes */}
-                      <div className="flex-1 sm:max-w-44">
-                        <input
-                          type="text"
-                          value={ret.reason || ''}
-                          onChange={(e) => updateReturnRow(index, 'reason', e.target.value)}
-                          placeholder="Reason (e.g. Expired, Stale)"
-                          className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
-                        />
+                      {/* Item Discount */}
+                      <div className="w-28 sm:w-32">
+                        <label className="block text-[9px] font-bold text-amber-700 uppercase tracking-wider text-center mb-1">
+                          Item Disc
+                        </label>
+                        <div className="flex items-center bg-white border border-slate-300 rounded-xl p-0.5 shadow-2xs focus-within:ring-2 focus-within:ring-amber-400">
+                          <button
+                            type="button"
+                            onClick={() => updateItemDiscountType(index, item.discountType === 'Rs' ? '%' : 'Rs')}
+                            className={`px-1.5 py-1 text-[10px] font-bold rounded-lg transition cursor-pointer ${item.discountType === 'Rs'
+                                ? 'bg-amber-500 text-white shadow-2xs'
+                                : 'bg-slate-100 text-slate-700 hover:bg-slate-200'
+                              }`}
+                            title="Toggle percentage (%) or flat amount (Rs)"
+                          >
+                            {item.discountType === 'Rs' ? 'Rs' : '%'}
+                          </button>
+                          <input
+                            type="number"
+                            min="0"
+                            placeholder="0"
+                            value={item.discountType === 'Rs' ? (item.discountAmount ?? '') : (item.discountPercent ?? '')}
+                            onChange={(e) => updateItemDiscountValue(index, parseFloat(e.target.value) || 0)}
+                            className="w-full bg-transparent px-1 py-1 text-xs font-bold text-slate-900 focus:outline-none text-center [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                          />
+                        </div>
                       </div>
 
-                      {/* Line Credit Total */}
-                      <div className="w-24 text-right font-mono text-xs font-bold text-rose-600">
-                        -{formatMoney(lineReturnTotal)}
+                      {/* Line Total */}
+                      <div className="w-24 sm:w-28 text-right pr-1">
+                        <label className="block text-[9px] font-bold text-slate-600 uppercase tracking-wider text-right mb-1">
+                          Line Total
+                        </label>
+                        <div className="font-mono text-xs font-bold text-slate-900 py-1">
+                          {formatMoney(lineTotal)}
+                        </div>
+                        {itemDiscount > 0 && (
+                          <div className="text-[10px] font-mono font-semibold text-amber-600">
+                            -{formatMoney(itemDiscount)}
+                          </div>
+                        )}
                       </div>
 
                       {/* Delete */}
-                      <button
-                        type="button"
-                        onClick={() => removeReturnRow(index)}
-                        className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white transition-colors"
-                      >
-                        <Trash2 className="w-4 h-4" />
-                      </button>
+                      <div className="pt-3 sm:pt-4">
+                        <button
+                          type="button"
+                          onClick={() => removeItemRow(index)}
+                          className="p-2 text-slate-400 hover:text-rose-600 rounded-xl hover:bg-rose-50 transition-colors cursor-pointer"
+                          title="Remove item line"
+                        >
+                          <Trash2 className="w-4 h-4" />
+                        </button>
+                      </div>
                     </div>
-                  );
-                })
-              )}
+                  </div>
+                );
+              })
+            )}
+          </div>
+
+          {/* Return Goods / Damage Goods (Credit Deductions) */}
+          <div className="space-y-2 pt-3 border-t border-dashed border-slate-200">
+            <div className="flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <RotateCcw className="w-4 h-4 text-amber-600" />
+                <span className="text-xs font-bold text-slate-700 uppercase tracking-wider">
+                  Customer Returns / Damage Goods (Credit Deduction)
+                </span>
+                {returnItems.length > 0 && (
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800">
+                    {returnItems.length} {returnItems.length === 1 ? 'item' : 'items'}
+                  </span>
+                )}
+              </div>
+              <button
+                type="button"
+                onClick={addReturnRow}
+                className="text-xs font-semibold text-amber-700 hover:text-amber-800 bg-amber-50 hover:bg-amber-100 px-3 py-1 rounded-xl transition flex items-center gap-1 border border-amber-200/60"
+              >
+                <Plus className="w-3.5 h-3.5" /> Add Return / Damage
+              </button>
             </div>
 
-            {/* Empty Bottle Exchange & Deposit Bar */}
-            <EmptyBottleBar
-              deliveredBottles={deliveredBottles}
-              customerBottleBalance={selectedCustomer?.emptyBottleBalance || 0}
-              depositRate={bottleDepositRate}
-              value={bottleState}
-              onChange={setBottleState}
-            />
+            {loadingReturnables && (
+              <div className="p-2.5 bg-slate-50 border border-slate-200 rounded-xl flex items-center gap-2 text-xs text-slate-500">
+                <Loader2 className="w-3.5 h-3.5 animate-spin text-amber-600" />
+                <span>Loading purchased products from customer's completed bills...</span>
+              </div>
+            )}
 
-            {/* Payment Details */}
-            <div className="p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl space-y-4 shadow-2xs">
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
-                <div>
-                  <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
-                    Payment Method
-                  </label>
-                  <select
-                    value={paymentMethod}
-                    onChange={(e) => {
-                      const m = e.target.value as any;
-                      setPaymentMethod(m);
-                      if (m === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
-                        setShowAdminPasscodeModal(true);
-                      }
-                    }}
-                    className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+            {selectedCustomerId && !loadingReturnables && customerReturnableProducts.length === 0 && (
+              <div className="p-3 bg-amber-50/70 border border-amber-200/80 rounded-2xl flex items-center gap-2 text-xs text-amber-800">
+                <AlertCircle className="w-4 h-4 text-amber-600 shrink-0" />
+                <span>No completed bills found for this customer. Only products previously purchased in completed bills can be returned.</span>
+              </div>
+            )}
+
+            {returnItems.length === 0 ? (
+              <div className="p-3 bg-slate-50/70 border border-dashed border-slate-200 rounded-2xl flex items-center justify-between text-xs text-slate-500">
+                <span>No returned or damaged items added for this bill.</span>
+                <button
+                  type="button"
+                  onClick={addReturnRow}
+                  className="text-xs text-amber-700 font-semibold hover:underline"
+                >
+                  + Add Return / Damage
+                </button>
+              </div>
+            ) : (
+              returnItems.map((ret, index) => {
+                const prod = warehouseProducts.find(p => p.id === ret.productId);
+                const rate = ret.unitPrice !== undefined ? ret.unitPrice : (prod ? prod.unitPrice : 0);
+                const lineReturnTotal = rate * (ret.quantity || 0);
+
+                return (
+                  <div
+                    key={index}
+                    className="flex flex-col sm:flex-row items-stretch sm:items-center gap-2.5 p-3.5 bg-amber-100/90 border border-amber-300 rounded-2xl shadow-2xs"
                   >
-                    <option value="CASH">Cash Payment</option>
-                    <option value="CREDIT">Credit (Pay Later)</option>
-                    <option value="CHEQUE">Cheque</option>
-                  </select>
-                </div>
+                    {/* Condition / Return Type */}
+                    <div className="w-full sm:w-44 shrink-0">
+                      <select
+                        value={ret.returnType}
+                        onChange={(e) => updateReturnRow(index, 'returnType', e.target.value as any)}
+                        className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-amber-950 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="DAMAGE">💥 Damaged / Expired</option>
+                        <option value="RESALE">✨ Good Condition</option>
+                      </select>
+                    </div>
 
-                {/* Hard Credit Stop Alert / Passcode Override Banner */}
-                {paymentMethod === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && (
-                  <div className="sm:col-span-3">
-                    {adminOverridePasscode ? (
-                      <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs animate-fadeIn">
-                        <div className="flex items-center gap-2">
-                          <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
-                          <div>
-                            <span className="font-bold text-emerald-900 block leading-tight">
-                              Credit Stop Override Authorized
-                            </span>
-                            <span className="text-[10px] text-emerald-700">
-                              Authorized by {authorizedByName || 'Admin Master PIN'}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => {
-                            setAdminOverridePasscode(null);
-                            setAuthorizedByName(null);
-                          }}
-                          className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold underline bg-white/60 px-2 py-1 rounded-md"
-                        >
-                          Revoke
-                        </button>
-                      </div>
-                    ) : (
-                      <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-center justify-between gap-2 text-xs animate-fadeIn shadow-2xs">
-                        <div className="flex items-start gap-2 min-w-0">
-                          <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                          <div className="min-w-0">
-                            <span className="font-bold text-rose-900 block leading-tight">
-                              Hard Credit Stop Active
-                            </span>
-                            <span className="text-[11px] text-rose-700 block truncate">
-                              {selectedCustomer?.creditRisk?.blockReason || 'Customer has bills >30 days overdue. Admin PIN required.'}
-                            </span>
-                          </div>
-                        </div>
-                        <button
-                          type="button"
-                          onClick={() => setShowAdminPasscodeModal(true)}
-                          className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs rounded-lg shrink-0 shadow-2xs transition"
-                        >
-                          Enter Admin PIN
-                        </button>
-                      </div>
-                    )}
+                    {/* Product Selector */}
+                    <div className="flex-1 w-full">
+                      <select
+                        value={ret.productId}
+                        onChange={(e) => updateReturnRow(index, 'productId', e.target.value)}
+                        required
+                        className="w-full bg-white border border-amber-300 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      >
+                        <option value="">-- Select Returned Product --</option>
+                        {customerReturnableProducts.length > 0 ? (
+                          customerReturnableProducts.map((rp) => (
+                            <option key={rp.productId} value={rp.productId}>
+                              {rp.product.name} ({rp.product.sku}) - Max: {rp.maxReturnableQty} {rp.product.unit || 'pcs'} @ {formatMoney(rp.latestUnitPrice)}
+                            </option>
+                          ))
+                        ) : (
+                          warehouseProducts.map((p) => (
+                            <option key={p.id} value={p.id}>
+                              {p.name} ({p.sku}) - Price: {formatMoney(p.unitPrice)}
+                            </option>
+                          ))
+                        )}
+                      </select>
+                    </div>
+
+                    {/* Return Quantity */}
+                    <div className="w-20">
+                      <input
+                        type="number"
+                        min="1"
+                        value={ret.quantity || ''}
+                        onChange={(e) => updateReturnRow(index, 'quantity', parseInt(e.target.value, 10) || 0)}
+                        placeholder="Qty"
+                        title="Return Quantity"
+                        required
+                        className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-center shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Credit Rate per unit */}
+                    <div className="w-24">
+                      <input
+                        type="number"
+                        step="0.01"
+                        min="0"
+                        value={ret.unitPrice !== undefined ? ret.unitPrice : ''}
+                        onChange={(e) => updateReturnRow(index, 'unitPrice', parseFloat(e.target.value) || 0)}
+                        placeholder="Rate"
+                        title="Return Credit Rate"
+                        className="w-full bg-white border border-amber-300 rounded-xl px-2 py-2 text-xs font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-amber-500 text-right shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Reason / Notes */}
+                    <div className="flex-1 sm:max-w-44">
+                      <input
+                        type="text"
+                        value={ret.reason || ''}
+                        onChange={(e) => updateReturnRow(index, 'reason', e.target.value)}
+                        placeholder="Reason (e.g. Expired, Stale)"
+                        className="w-full bg-white border border-amber-300 rounded-xl px-2.5 py-2 text-xs text-slate-800 focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs"
+                      />
+                    </div>
+
+                    {/* Line Credit Total */}
+                    <div className="w-24 text-right font-mono text-xs font-bold text-rose-600">
+                      -{formatMoney(lineReturnTotal)}
+                    </div>
+
+                    {/* Delete */}
+                    <button
+                      type="button"
+                      onClick={() => removeReturnRow(index)}
+                      className="p-1.5 text-slate-400 hover:text-rose-500 rounded-lg hover:bg-white transition-colors"
+                    >
+                      <Trash2 className="w-4 h-4" />
+                    </button>
                   </div>
-                )}
+                );
+              })
+            )}
+          </div>
 
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Cash Received ({formatMoney(0).split(' ')[0]})
-                  </label>
-                  <input
-                    type="number"
-                    step="0.01"
-                    value={cashReceived}
-                    onChange={(e) => setCashReceived(e.target.value)}
-                    placeholder="0.00"
-                    className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                  />
-                </div>
+          {/* Empty Bottle Exchange & Deposit Bar */}
+          <EmptyBottleBar
+            deliveredBottles={deliveredBottles}
+            customerBottleBalance={selectedCustomer?.emptyBottleBalance || 0}
+            depositRate={bottleDepositRate}
+            value={bottleState}
+            onChange={setBottleState}
+          />
 
-                <div>
-                  <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
-                    Credit / Balance Unpaid
-                  </label>
-                  <div className="px-3.5 py-2.5 bg-slate-100 rounded-xl text-sm font-mono font-bold text-rose-600">
-                    {formatMoney(Math.max(0, netTotal - (parseFloat(cashReceived) || 0)))}
-                  </div>
-                </div>
+          {/* Payment Details */}
+          <div className="p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl space-y-4 shadow-2xs">
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-700 uppercase tracking-wider block mb-1.5">
+                  Payment Method
+                </label>
+                <select
+                  value={paymentMethod}
+                  onChange={(e) => {
+                    const m = e.target.value as any;
+                    setPaymentMethod(m);
+                    if (m === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
+                      setShowAdminPasscodeModal(true);
+                    }
+                  }}
+                  className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
+                >
+                  <option value="CASH">Cash Payment</option>
+                  <option value="CREDIT">Credit (Pay Later)</option>
+                  <option value="CHEQUE">Cheque</option>
+                </select>
               </div>
 
-              {/* Cheque Details when CHEQUE is selected */}
-              {paymentMethod === 'CHEQUE' && (
-                <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl space-y-3 animate-fadeIn">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
-                      <CreditCard className="w-4 h-4 text-blue-600" />
-                      Cheque Information (Tracked in Admin Cheque Management)
-                    </span>
-                    <span className="text-[11px] font-semibold text-blue-600 bg-white px-2.5 py-0.5 rounded-md border border-blue-200">
-                      Auto-allocated to Cheque Registry
-                    </span>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 block mb-1">
-                        Cheque Number <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={chequeNumber}
-                        onChange={(e) => setChequeNumber(e.target.value)}
-                        placeholder="e.g. 049182"
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+              {/* Hard Credit Stop Alert / Passcode Override Banner */}
+              {paymentMethod === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && (
+                <div className="sm:col-span-3">
+                  {adminOverridePasscode ? (
+                    <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs animate-fadeIn">
+                      <div className="flex items-center gap-2">
+                        <ShieldCheck className="w-4 h-4 text-emerald-600 shrink-0" />
+                        <div>
+                          <span className="font-bold text-emerald-900 block leading-tight">
+                            Credit Stop Override Authorized
+                          </span>
+                          <span className="text-[10px] text-emerald-700">
+                            Authorized by {authorizedByName || 'Admin Master PIN'}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => {
+                          setAdminOverridePasscode(null);
+                          setAuthorizedByName(null);
+                        }}
+                        className="text-[10px] text-emerald-800 hover:text-emerald-950 font-bold underline bg-white/60 px-2 py-1 rounded-md"
+                      >
+                        Revoke
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 block mb-1">
-                        Bank Name <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="text"
-                        value={bankName}
-                        onChange={(e) => setBankName(e.target.value)}
-                        placeholder="e.g. Commercial Bank, BOC..."
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
+                  ) : (
+                    <div className="p-3 bg-rose-50 border border-rose-300 rounded-xl flex items-center justify-between gap-2 text-xs animate-fadeIn shadow-2xs">
+                      <div className="flex items-start gap-2 min-w-0">
+                        <ShieldAlert className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                        <div className="min-w-0">
+                          <span className="font-bold text-rose-900 block leading-tight">
+                            Hard Credit Stop Active
+                          </span>
+                          <span className="text-[11px] text-rose-700 block truncate">
+                            {selectedCustomer?.creditRisk?.blockReason || 'Customer has bills >30 days overdue. Admin PIN required.'}
+                          </span>
+                        </div>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={() => setShowAdminPasscodeModal(true)}
+                        className="px-3 py-1.5 bg-rose-600 hover:bg-rose-700 active:scale-[0.98] text-white font-bold text-xs rounded-lg shrink-0 shadow-2xs transition"
+                      >
+                        Enter Admin PIN
+                      </button>
                     </div>
-
-                    <div>
-                      <label className="text-xs font-bold text-slate-600 block mb-1">
-                        Cheque Maturity Date <span className="text-red-500">*</span>
-                      </label>
-                      <input
-                        type="date"
-                        value={chequeDate}
-                        onChange={(e) => setChequeDate(e.target.value)}
-                        className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
-                      />
-                    </div>
-                  </div>
-                </div>
-              )}
-
-              {/* Total Driver Cash Handover Breakdown if previous bill is settled */}
-              {settlePreviousBill && parseFloat(settleAmount) > 0 && (
-                <div className="p-3 bg-emerald-50/80 border border-emerald-200/90 rounded-xl flex items-center justify-between text-xs animate-fadeIn">
-                  <div className="flex items-center gap-2">
-                    <span className="font-bold text-emerald-900">Total Cash Collected Today:</span>
-                    <span className="text-slate-600">
-                      Current Bill Cash ({formatMoney(parseFloat(cashReceived) || 0)}) + Previous Bill Settle ({formatMoney(parseFloat(settleAmount) || 0)})
-                    </span>
-                  </div>
-                  <span className="font-mono font-extrabold text-sm text-emerald-700 bg-white px-2.5 py-1 rounded-lg border border-emerald-200">
-                    {formatMoney((parseFloat(cashReceived) || 0) + (parseFloat(settleAmount) || 0))}
-                  </span>
+                  )}
                 </div>
               )}
 
               <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Cash Received ({formatMoney(0).split(' ')[0]})
+                </label>
                 <input
-                  type="text"
-                  value={notes}
-                  onChange={(e) => setNotes(e.target.value)}
-                  placeholder="Optional remarks, customer notes, receipt reference..."
-                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  type="number"
+                  step="0.01"
+                  value={cashReceived}
+                  onChange={(e) => setCashReceived(e.target.value)}
+                  placeholder="0.00"
+                  className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
                 />
               </div>
-            </div>
 
-            {/* Total Bill Discount Control Card */}
-            <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-amber-50/70 to-orange-50/50 border border-amber-200/80 rounded-2xl shadow-2xs">
-              <div className="flex items-center gap-2.5">
-                <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0">
-                  <Tag className="w-4 h-4 text-amber-600" />
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Credit / Balance Unpaid
+                </label>
+                <div className="px-3.5 py-2.5 bg-slate-100 rounded-xl text-sm font-mono font-bold text-rose-600">
+                  {formatMoney(Math.max(0, netTotal - (parseFloat(cashReceived) || 0)))}
                 </div>
-                <div>
-                  <div className="flex items-center gap-2">
-                    <span className="text-xs font-bold text-slate-900">Total Bill Discount</span>
-                    {selectedCustomer?.discountPercentage && selectedCustomer.discountPercentage > 0 && !billDiscountManual && (
-                      <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
-                        Customer Default {selectedCustomer.discountPercentage}%
-                      </span>
-                    )}
-                  </div>
-                  <span className="text-[11px] text-slate-500">Apply overall percentage or flat rupee discount to this invoice</span>
-                </div>
-              </div>
-
-              <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
-                <div className="inline-flex rounded-xl bg-white border border-amber-300 p-0.5 shadow-2xs">
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBillDiscountType('%');
-                      setBillDiscountManual(true);
-                    }}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      billDiscountType === '%'
-                        ? 'bg-amber-500 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    %
-                  </button>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      setBillDiscountType('Rs');
-                      setBillDiscountManual(true);
-                    }}
-                    className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${
-                      billDiscountType === 'Rs'
-                        ? 'bg-amber-500 text-white shadow-2xs'
-                        : 'text-slate-600 hover:text-slate-900'
-                    }`}
-                  >
-                    Rs
-                  </button>
-                </div>
-
-                <div className="relative">
-                  <input
-                    type="number"
-                    min="0"
-                    placeholder="0"
-                    value={billDiscountValue === 0 && !billDiscountManual ? '' : billDiscountValue}
-                    onChange={(e) => {
-                      setBillDiscountValue(Math.max(0, parseFloat(e.target.value) || 0));
-                      setBillDiscountManual(true);
-                    }}
-                    className="w-20 bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs font-bold font-mono text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
-                  />
-                </div>
-
-                {billDiscountAmount > 0 && (
-                  <span className="font-mono text-xs font-bold text-amber-700 bg-amber-100/80 px-2 py-1 rounded-lg">
-                    -{formatMoney(billDiscountAmount)}
-                  </span>
-                )}
               </div>
             </div>
 
-            {/* Calculations & Submit */}
-            <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs">
-              <div className="flex flex-wrap items-center gap-4 sm:gap-6">
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Units Outflow
+            {/* Cheque Details when CHEQUE is selected */}
+            {paymentMethod === 'CHEQUE' && (
+              <div className="p-3.5 bg-blue-50/80 border border-blue-200 rounded-xl space-y-3 animate-fadeIn">
+                <div className="flex items-center justify-between">
+                  <span className="text-xs font-bold text-blue-900 flex items-center gap-1.5">
+                    <CreditCard className="w-4 h-4 text-blue-600" />
+                    Cheque Information (Tracked in Admin Cheque Management)
                   </span>
-                  <span className="text-sm font-mono font-semibold text-slate-700">
-                    {totalBilledUnits} Paid {totalFreeUnits > 0 && <span className="text-emerald-600 font-bold">(+{totalFreeUnits} Free)</span>}
-                    {totalReturnUnits > 0 && <span className="text-amber-700 font-bold ml-1">({totalReturnUnits} returned)</span>}
-                  </span>
-                </div>
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Subtotal
-                  </span>
-                  <span className="text-sm font-mono font-semibold text-slate-600">
-                    {formatMoney(subtotal)}
+                  <span className="text-[11px] font-semibold text-blue-600 bg-white px-2.5 py-0.5 rounded-md border border-blue-200">
+                    Auto-allocated to Cheque Registry
                   </span>
                 </div>
-                {totalItemDiscounts > 0 && (
+
+                <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
                   <div>
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                      Item Discounts
-                    </span>
-                    <span className="text-sm font-mono font-semibold text-amber-600">
-                      -{formatMoney(totalItemDiscounts)}
-                    </span>
+                    <label className="text-xs font-bold text-slate-600 block mb-1">
+                      Cheque Number <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={chequeNumber}
+                      onChange={(e) => setChequeNumber(e.target.value)}
+                      placeholder="e.g. 049182"
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                )}
-                {billDiscountAmount > 0 && (
+
                   <div>
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                      Bill Discount ({billDiscountPercentage.toFixed(1)}%)
-                    </span>
-                    <span className="text-sm font-mono font-semibold text-emerald-600">
-                      -{formatMoney(billDiscountAmount)}
-                    </span>
+                    <label className="text-xs font-bold text-slate-600 block mb-1">
+                      Bank Name <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="text"
+                      value={bankName}
+                      onChange={(e) => setBankName(e.target.value)}
+                      placeholder="e.g. Commercial Bank, BOC..."
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                )}
-                {returnAmount > 0 && (
+
                   <div>
-                    <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                      Returns / Damages
-                    </span>
-                    <span className="text-sm font-mono font-semibold text-rose-600">
-                      -{formatMoney(returnAmount)}
-                    </span>
+                    <label className="text-xs font-bold text-slate-600 block mb-1">
+                      Cheque Maturity Date <span className="text-red-500">*</span>
+                    </label>
+                    <input
+                      type="date"
+                      value={chequeDate}
+                      onChange={(e) => setChequeDate(e.target.value)}
+                      className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-mono font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                    />
                   </div>
-                )}
-                <div>
-                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
-                    Bill Net Total
-                  </span>
-                  <span className="text-xl sm:text-2xl font-bold text-blue-600 font-mono">
-                    {formatMoney(netTotal)}
-                  </span>
                 </div>
               </div>
+            )}
 
-              <div className="flex items-center gap-2 w-full sm:w-auto">
-                {hasDraft && (
-                  <button
-                    type="button"
-                    onClick={handleClearForm}
-                    className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors flex items-center gap-1.5"
-                    title="Clear current draft"
-                  >
-                    <RotateCcw className="w-3.5 h-3.5" />
-                    <span>Reset</span>
-                  </button>
-                )}
+            {/* Total Driver Cash Handover Breakdown if previous bill is settled */}
+            {settlePreviousBill && parseFloat(settleAmount) > 0 && (
+              <div className="p-3 bg-emerald-50/80 border border-emerald-200/90 rounded-xl flex items-center justify-between text-xs animate-fadeIn">
+                <div className="flex items-center gap-2">
+                  <span className="font-bold text-emerald-900">Total Cash Collected Today:</span>
+                  <span className="text-slate-600">
+                    Current Bill Cash ({formatMoney(parseFloat(cashReceived) || 0)}) + Previous Bill Settle ({formatMoney(parseFloat(settleAmount) || 0)})
+                  </span>
+                </div>
+                <span className="font-mono font-extrabold text-sm text-emerald-700 bg-white px-2.5 py-1 rounded-lg border border-emerald-200">
+                  {formatMoney((parseFloat(cashReceived) || 0) + (parseFloat(settleAmount) || 0))}
+                </span>
+              </div>
+            )}
 
+            <div>
+              <input
+                type="text"
+                value={notes}
+                onChange={(e) => setNotes(e.target.value)}
+                placeholder="Optional remarks, customer notes, receipt reference..."
+                className="w-full bg-white border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500"
+              />
+            </div>
+          </div>
+
+          {/* Total Bill Discount Control Card */}
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 p-3.5 bg-gradient-to-r from-amber-50/70 to-orange-50/50 border border-amber-200/80 rounded-2xl shadow-2xs">
+            <div className="flex items-center gap-2.5">
+              <div className="w-8 h-8 rounded-xl bg-amber-500/10 border border-amber-300 text-amber-700 flex items-center justify-center shrink-0">
+                <Tag className="w-4 h-4 text-amber-600" />
+              </div>
+              <div>
+                <div className="flex items-center gap-2">
+                  <span className="text-xs font-bold text-slate-900">Total Bill Discount</span>
+                  {selectedCustomer?.discountPercentage && selectedCustomer.discountPercentage > 0 && !billDiscountManual && (
+                    <span className="px-1.5 py-0.5 rounded-md bg-amber-100 text-amber-800 text-[10px] font-bold">
+                      Customer Default {selectedCustomer.discountPercentage}%
+                    </span>
+                  )}
+                </div>
+                <span className="text-[11px] text-slate-500">Apply overall percentage or flat rupee discount to this invoice</span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 shrink-0 self-end sm:self-auto">
+              <div className="inline-flex rounded-xl bg-white border border-amber-300 p-0.5 shadow-2xs">
                 <button
-                  type="submit"
-                  disabled={submitting || availableItems.length === 0}
-                  className={`flex-1 sm:flex-initial px-6 py-3.5 active:scale-[0.99] text-white text-sm font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${
-                    billMode === 'LORRY'
-                      ? 'bg-[#0071E3] hover:bg-blue-600'
-                      : 'bg-emerald-600 hover:bg-emerald-700'
-                  }`}
+                  type="button"
+                  onClick={() => {
+                    setBillDiscountType('%');
+                    setBillDiscountManual(true);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${billDiscountType === '%'
+                      ? 'bg-amber-500 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                    }`}
                 >
-                  <Receipt className="w-4 h-4" />
-                  <span>
-                    {submitting
-                      ? 'Saving Bill...'
-                      : billMode === 'LORRY'
-                        ? 'Save Lorry Delivery Bill'
-                        : 'Save Walk-in Bill'}
-                  </span>
+                  %
+                </button>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setBillDiscountType('Rs');
+                    setBillDiscountManual(true);
+                  }}
+                  className={`px-2 py-1 rounded-lg text-xs font-bold transition cursor-pointer ${billDiscountType === 'Rs'
+                      ? 'bg-amber-500 text-white shadow-2xs'
+                      : 'text-slate-600 hover:text-slate-900'
+                    }`}
+                >
+                  Rs
                 </button>
               </div>
+
+              <div className="relative">
+                <input
+                  type="number"
+                  min="0"
+                  placeholder="0"
+                  value={billDiscountValue === 0 && !billDiscountManual ? '' : billDiscountValue}
+                  onChange={(e) => {
+                    setBillDiscountValue(Math.max(0, parseFloat(e.target.value) || 0));
+                    setBillDiscountManual(true);
+                  }}
+                  className="w-20 bg-white border border-amber-300 rounded-xl px-2.5 py-1.5 text-xs font-bold font-mono text-slate-900 text-center focus:outline-none focus:ring-2 focus:ring-amber-500 shadow-2xs [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
+                />
+              </div>
+
+              {billDiscountAmount > 0 && (
+                <span className="font-mono text-xs font-bold text-amber-700 bg-amber-100/80 px-2 py-1 rounded-lg">
+                  -{formatMoney(billDiscountAmount)}
+                </span>
+              )}
             </div>
-          </form>
-        </div>
+          </div>
+
+          {/* Calculations & Submit */}
+          <div className="pt-4 border-t border-slate-300 flex flex-col sm:flex-row items-center justify-between gap-4 p-4.5 bg-slate-100/95 border border-slate-300 rounded-2xl shadow-2xs">
+            <div className="flex flex-wrap items-center gap-4 sm:gap-6">
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Units Outflow
+                </span>
+                <span className="text-sm font-mono font-semibold text-slate-700">
+                  {totalBilledUnits} Paid {totalFreeUnits > 0 && <span className="text-emerald-600 font-bold">(+{totalFreeUnits} Free)</span>}
+                  {totalReturnUnits > 0 && <span className="text-amber-700 font-bold ml-1">({totalReturnUnits} returned)</span>}
+                </span>
+              </div>
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Subtotal
+                </span>
+                <span className="text-sm font-mono font-semibold text-slate-600">
+                  {formatMoney(subtotal)}
+                </span>
+              </div>
+              {totalItemDiscounts > 0 && (
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                    Item Discounts
+                  </span>
+                  <span className="text-sm font-mono font-semibold text-amber-600">
+                    -{formatMoney(totalItemDiscounts)}
+                  </span>
+                </div>
+              )}
+              {billDiscountAmount > 0 && (
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                    Bill Discount ({billDiscountPercentage.toFixed(1)}%)
+                  </span>
+                  <span className="text-sm font-mono font-semibold text-emerald-600">
+                    -{formatMoney(billDiscountAmount)}
+                  </span>
+                </div>
+              )}
+              {returnAmount > 0 && (
+                <div>
+                  <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                    Returns / Damages
+                  </span>
+                  <span className="text-sm font-mono font-semibold text-rose-600">
+                    -{formatMoney(returnAmount)}
+                  </span>
+                </div>
+              )}
+              <div>
+                <span className="text-xs font-bold text-slate-500 uppercase tracking-wider block">
+                  Bill Net Total
+                </span>
+                <span className="text-xl sm:text-2xl font-bold text-blue-600 font-mono">
+                  {formatMoney(netTotal)}
+                </span>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto">
+              {hasDraft && (
+                <button
+                  type="button"
+                  onClick={handleClearForm}
+                  className="px-4 py-3 rounded-2xl text-xs sm:text-sm font-semibold text-slate-500 hover:text-rose-600 hover:bg-rose-50 border border-slate-200 transition-colors flex items-center gap-1.5"
+                  title="Clear current draft"
+                >
+                  <RotateCcw className="w-3.5 h-3.5" />
+                  <span>Reset</span>
+                </button>
+              )}
+
+              <button
+                type="submit"
+                disabled={submitting || availableItems.length === 0}
+                className={`flex-1 sm:flex-initial px-6 py-3.5 active:scale-[0.99] text-white text-sm font-bold rounded-2xl shadow-sm flex items-center justify-center gap-2 transition-all disabled:opacity-50 ${billMode === 'LORRY'
+                    ? 'bg-[#0071E3] hover:bg-blue-600'
+                    : 'bg-emerald-600 hover:bg-emerald-700'
+                  }`}
+              >
+                <Receipt className="w-4 h-4" />
+                <span>
+                  {submitting
+                    ? 'Saving Bill...'
+                    : billMode === 'LORRY'
+                      ? 'Save Lorry Delivery Bill'
+                      : 'Save Walk-in Bill'}
+                </span>
+              </button>
+            </div>
+          </div>
+        </form>
+      </div>
 
       {/* Today's Recorded Bills Table */}
       <div className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-6 space-y-4">
@@ -2027,13 +2018,12 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   </td>
                   <td className="py-3.5 px-3.5">
                     <span
-                      className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${
-                        order.paymentStatus === 'PAID'
+                      className={`px-2.5 py-1 rounded-lg text-xs font-bold uppercase ${order.paymentStatus === 'PAID'
                           ? 'bg-emerald-50 text-emerald-700 border border-emerald-200/60'
                           : order.paymentStatus === 'PARTIAL'
                             ? 'bg-amber-50 text-amber-700 border border-amber-200/60'
                             : 'bg-rose-50 text-rose-700 border border-rose-200/60'
-                      }`}
+                        }`}
                     >
                       {order.paymentMethod} • {order.paymentStatus}
                     </span>
@@ -2066,9 +2056,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       <div id="stock-overview-section" className="bg-white rounded-3xl border border-slate-200/80 shadow-2xs p-5 sm:p-6 space-y-4">
         <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3 border-b border-slate-100 pb-3.5">
           <div className="flex items-center gap-2.5">
-            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${
-              billMode === 'LORRY' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
-            }`}>
+            <div className={`w-9 h-9 rounded-2xl flex items-center justify-center shrink-0 ${billMode === 'LORRY' ? 'bg-blue-50 text-blue-600' : 'bg-emerald-50 text-emerald-600'
+              }`}>
               {billMode === 'LORRY' ? <Truck className="w-5 h-5" /> : <Building2 className="w-5 h-5" />}
             </div>
             <div>
