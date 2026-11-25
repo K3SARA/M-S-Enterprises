@@ -183,6 +183,12 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({ payroll, onClose }) 
                     <span>-{formatMoney(payroll.epfDeduction)}</span>
                   </div>
                 )}
+                {payroll.absentDays > 0 && (
+                  <div className="flex justify-between text-rose-600">
+                    <span>Unpaid Absence ({payroll.absentDays}d)</span>
+                    <span>-{formatMoney(payroll.absentDeduction || (payroll.basicSalary > 0 ? Math.round((payroll.basicSalary / 26) * payroll.absentDays) : 0))}</span>
+                  </div>
+                )}
                 {payroll.otherDeductions > 0 && (
                   <div className="flex justify-between text-rose-600">
                     <span>Other Deductions</span>
@@ -368,6 +374,12 @@ export const PayslipModal: React.FC<PayslipModalProps> = ({ payroll, onClose }) 
                       <div className="flex justify-between text-xs text-rose-700">
                         <span>Employee EPF (8%)</span>
                         <span className="font-mono font-medium">-{formatMoney(payroll.epfDeduction)}</span>
+                      </div>
+                    )}
+                    {payroll.absentDays > 0 && (
+                      <div className="flex justify-between text-xs text-rose-700">
+                        <span>Unpaid Absence Deduction ({payroll.absentDays} days)</span>
+                        <span className="font-mono font-medium">-{formatMoney(payroll.absentDeduction || (payroll.basicSalary > 0 ? Math.round((payroll.basicSalary / 26) * payroll.absentDays) : 0))}</span>
                       </div>
                     )}
                     {payroll.otherDeductions > 0 && (

@@ -562,6 +562,7 @@ export const HrService = {
     allowances?: number;
     salesCommission?: number;
     performanceBonus?: number;
+    absentDeduction?: number;
     advancesDeducted?: number;
     epfDeduction?: number;
     employerEpf?: number;
@@ -827,7 +828,7 @@ export const RepAttendanceService = {
     api.post<{ success: boolean; message: string; attendance: Attendance }>('/rep/attendance/check-in', payload).then(r => r.data),
   checkOut: (payload: { userId?: string; lorryId?: string; latitude?: number; longitude?: number; notes?: string }) =>
     api.post<{ success: boolean; message: string; attendance: Attendance; dutyHours: number; otHours: number }>('/rep/attendance/check-out', payload).then(r => r.data),
-  getCurrentSalarySlip: (params?: { userId?: string; lorryId?: string; month?: number; year?: number }) =>
+  getCurrentSalarySlip: (params?: { userId?: string; lorryId?: string; month?: number; year?: number; role?: 'REP' | 'DRIVER' }) =>
     api.get<RepSalarySlipPreview>('/rep/salary-slip/current', { params }).then(r => r.data),
 };
 

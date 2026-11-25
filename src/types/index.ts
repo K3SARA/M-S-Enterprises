@@ -946,6 +946,8 @@ export interface RepAttendanceStatus {
   dutyHours: number;
   otHours: number;
   status: AttendanceStatus;
+  driverEmployee?: Employee | null;
+  driverAttendance?: Attendance | null;
 }
 
 export interface RepSalarySlipPreview {
@@ -978,6 +980,8 @@ export interface RepSalarySlipPreview {
     epfDeduction: number;
     employerEpf: number;
     employerEtf: number;
+    absentDeduction?: number;
+    dailyBasicRate?: number;
     otherDeductions: number;
     totalDeductions: number;
   };
@@ -1020,6 +1024,7 @@ export interface Payroll {
   performanceBonus: number;
   grossEarnings: number;
   advancesDeducted: number;
+  absentDeduction?: number;
   epfDeduction: number;
   employerEpf: number;
   employerEtf: number;

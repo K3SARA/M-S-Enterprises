@@ -1161,6 +1161,73 @@ async function getOrLinkRepEmployee(userId?: string, lorryId?: string) {
   return employee;
 }
 
+// Helper: Ensure a Lorry Driver has a corresponding active Employee record
+async function getOrLinkDriverEmployee(lorryId?: string): Promise<any> {
+  if (!lorryId) return null;
+  const lorry = await prisma.lorry.findUnique({ where: { id: lorryId } });
+  if (!lorry) return null;
+
+  // 1. Search existing employee by lorryId and Driver designation
+  let driverEmployee = await prisma.employee.findFirst({
+    where: {
+      lorryId: lorry.id,
+      designation: { contains: 'Driver' },
+      status: 'ACTIVE'
+    }
+  });
+
+  // 2. Search existing employee by driver name
+  if (!driverEmployee && lorry.driverName) {
+    driverEmployee = await prisma.employee.findFirst({
+      where: {
+        fullName: { contains: lorry.driverName },
+        designation: { contains: 'Driver' },
+        status: 'ACTIVE'
+      }
+    });
+    if (driverEmployee) {
+      driverEmployee = await prisma.employee.update({
+        where: { id: driverEmployee.id },
+        data: { lorryId: lorry.id }
+      });
+    }
+  }
+
+  // 3. Fallback: search any driver employee
+  if (!driverEmployee) {
+    driverEmployee = await prisma.employee.findFirst({
+      where: {
+        designation: { contains: 'Driver' },
+        status: 'ACTIVE'
+      }
+    });
+  }
+
+  // 4. Auto-create Driver Employee if still none exists
+  if (!driverEmployee) {
+    const count = await prisma.employee.count();
+    const empNum = `DRV-${String(count + 1).padStart(3, '0')}`;
+    driverEmployee = await prisma.employee.create({
+      data: {
+        employeeNumber: empNum,
+        fullName: lorry.driverName || 'Lorry Driver',
+        phone: lorry.driverPhone || '0771234567',
+        designation: 'Lorry Driver',
+        department: 'SALES_FLEET',
+        employmentType: 'FULL_TIME',
+        basicSalary: 40000,
+        otHourlyRate: 300,
+        commissionRate: 0,
+        allowances: 4000,
+        lorryId: lorry.id,
+        status: 'ACTIVE'
+      }
+    });
+  }
+
+  return driverEmployee;
+}
+
 // 1. GET Rep Attendance Status for Today
 app.get('/api/rep/attendance/today', async (req: Request, res: Response) => {
   try {
@@ -1181,6 +1248,26 @@ app.get('/api/rep/attendance/today', async (req: Request, res: Response) => {
     const isCheckedIn = Boolean(attendance && attendance.checkInTime);
     const isCheckedOut = Boolean(attendance && attendance.checkOutTime);
 
+    // Also fetch driver's status for this lorry
+    let driverEmployee = null;
+    let driverAttendance = null;
+    const effectiveLorryId = (lorryId as string) || employee.lorryId;
+    if (effectiveLorryId) {
+      try {
+        driverEmployee = await getOrLinkDriverEmployee(effectiveLorryId);
+        if (driverEmployee) {
+          driverAttendance = await prisma.attendance.findFirst({
+            where: {
+              employeeId: driverEmployee.id,
+              date: { gte: startOfDay, lte: endOfDay }
+            }
+          });
+        }
+      } catch (drvErr) {
+        console.warn('Driver attendance fetch warning:', drvErr);
+      }
+    }
+
     res.json({
       employee,
       attendance,
@@ -1190,7 +1277,9 @@ app.get('/api/rep/attendance/today', async (req: Request, res: Response) => {
       checkOutTime: attendance?.checkOutTime || null,
       dutyHours: attendance?.dutyHours || 0,
       otHours: attendance?.otHours || 0,
-      status: attendance?.status || 'ABSENT'
+      status: attendance?.status || 'ABSENT',
+      driverEmployee,
+      driverAttendance
     });
   } catch (err: any) {
     console.error('Error fetching today rep attendance:', err);
@@ -1253,11 +1342,56 @@ app.post('/api/rep/attendance/check-in', async (req: Request, res: Response) => 
       });
     }
 
+    // Auto-check in Driver for this lorry if exists
+    let driverEmployee = null;
+    let driverAttendance = null;
+    const effectiveLorryId = lorryId || employee.lorryId;
+    if (effectiveLorryId) {
+      try {
+        driverEmployee = await getOrLinkDriverEmployee(effectiveLorryId);
+        if (driverEmployee) {
+          const existingDrv = await prisma.attendance.findFirst({
+            where: {
+              employeeId: driverEmployee.id,
+              date: { gte: startOfDay, lte: endOfDay }
+            }
+          });
+          if (existingDrv) {
+            driverAttendance = await prisma.attendance.update({
+              where: { id: existingDrv.id },
+              data: {
+                status: 'PRESENT',
+                checkInTime: existingDrv.checkInTime || checkInTime,
+                checkInLatitude: typeof latitude === 'number' ? latitude : existingDrv.checkInLatitude,
+                checkInLongitude: typeof longitude === 'number' ? longitude : existingDrv.checkInLongitude
+              }
+            });
+          } else {
+            driverAttendance = await prisma.attendance.create({
+              data: {
+                employeeId: driverEmployee.id,
+                date: startOfDay,
+                status: 'PRESENT',
+                checkInTime,
+                checkInLatitude: typeof latitude === 'number' ? latitude : null,
+                checkInLongitude: typeof longitude === 'number' ? longitude : null,
+                notes: `Route crew check-in with Rep ${employee.fullName}`
+              }
+            });
+          }
+        }
+      } catch (drvErr) {
+        console.warn('Driver check-in warning:', drvErr);
+      }
+    }
+
     res.json({
       success: true,
-      message: `Checked in successfully at ${checkInTime}. Attendance marked as PRESENT.`,
+      message: `Checked in successfully at ${checkInTime}. Attendance marked as PRESENT for route crew.`,
       attendance,
-      employee
+      employee,
+      driverEmployee,
+      driverAttendance
     });
   } catch (err: any) {
     console.error('Error during rep check-in:', err);
@@ -1325,6 +1459,36 @@ app.post('/api/rep/attendance/check-out', async (req: Request, res: Response) =>
       });
     }
 
+    // Also check out driver
+    const effectiveLorryId = lorryId || employee.lorryId;
+    if (effectiveLorryId) {
+      try {
+        const drvEmployee = await getOrLinkDriverEmployee(effectiveLorryId);
+        if (drvEmployee) {
+          const drvAtt = await prisma.attendance.findFirst({
+            where: {
+              employeeId: drvEmployee.id,
+              date: { gte: startOfDay, lte: endOfDay }
+            }
+          });
+          if (drvAtt) {
+            await prisma.attendance.update({
+              where: { id: drvAtt.id },
+              data: {
+                checkOutTime,
+                checkOutLatitude: typeof latitude === 'number' ? latitude : null,
+                checkOutLongitude: typeof longitude === 'number' ? longitude : null,
+                dutyHours,
+                otHours
+              }
+            });
+          }
+        }
+      } catch (drvErr) {
+        console.warn('Driver check-out warning:', drvErr);
+      }
+    }
+
     res.json({
       success: true,
       message: `Checked out successfully at ${checkOutTime}. (${dutyHours} hrs worked • ${otHours} hrs OT).`,
@@ -1342,8 +1506,13 @@ app.post('/api/rep/attendance/check-out', async (req: Request, res: Response) =>
 // 4. GET Live Salary Slip & Payroll Preview for Rep
 app.get('/api/rep/salary-slip/current', async (req: Request, res: Response) => {
   try {
-    const { userId, lorryId, month: qMonth, year: qYear } = req.query;
-    const employee = await getOrLinkRepEmployee(userId as string, lorryId as string);
+    const { userId, lorryId, month: qMonth, year: qYear, role } = req.query;
+    let employee: any;
+    if (role === 'DRIVER') {
+      employee = await getOrLinkDriverEmployee(lorryId as string);
+    } else {
+      employee = await getOrLinkRepEmployee(userId as string, lorryId as string);
+    }
 
     const now = new Date();
     const month = qMonth ? parseInt(qMonth as string, 10) : (now.getMonth() + 1);
@@ -1370,21 +1539,21 @@ app.get('/api/rep/salary-slip/current', async (req: Request, res: Response) => {
     const totalOtHours = attendances.reduce((acc, a) => acc + (a.otHours || 0), 0);
 
     // 2. Base salary & OT
-    let basicSalary = employee.basicSalary || 45000;
+    let basicSalary = employee.basicSalary || (role === 'DRIVER' ? 40000 : 45000);
     if (employee.employmentType === 'DAILY_WAGE' && employee.dailyRate > 0) {
       basicSalary = employee.dailyRate * workedDays;
     }
-    const otRate = employee.otHourlyRate || 350;
+    const otRate = employee.otHourlyRate || (role === 'DRIVER' ? 300 : 350);
     const otAmount = Math.round(totalOtHours * otRate);
     const allowances = employee.allowances || 0;
 
-    // 3. Sales Commission calculation
+    // 3. Sales Commission / Trip calculation
     const effectiveLorryId = employee.lorryId || (lorryId as string) || null;
     let monthlySalesTotal = 0;
     let salesCommission = 0;
-    const commissionRate = employee.commissionRate || 1.5;
+    const commissionRate = employee.commissionRate || (role === 'DRIVER' ? 0 : 1.5);
 
-    if (effectiveLorryId) {
+    if (effectiveLorryId && commissionRate > 0) {
       const deliveredOrders = await prisma.order.findMany({
         where: {
           lorryId: effectiveLorryId,
@@ -1410,13 +1579,25 @@ app.get('/api/rep/salary-slip/current', async (req: Request, res: Response) => {
     });
     const advancesDeducted = pendingAdvances.reduce((acc, a) => acc + a.amount, 0);
 
-    // 5. EPF/ETF statutory deduction
+    // 5. Unpaid Absence Deduction (No-Pay)
+    // Standard working days per month = 26 days
+    const standardWorkingDays = 26;
+    const dailyBasicRate = basicSalary > 0
+      ? Math.round((basicSalary / standardWorkingDays) * 100) / 100
+      : (employee.dailyRate || 0);
+
+    const totalUnpaidAbsences = absentDays + (halfDays * 0.5);
+    const absentDeduction = employee.employmentType === 'FULL_TIME'
+      ? Math.round(totalUnpaidAbsences * dailyBasicRate)
+      : 0;
+
+    // 6. EPF/ETF statutory deduction
     const epfDeduction = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.08) : 0;
     const employerEpf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.12) : 0;
     const employerEtf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.03) : 0;
 
     const otherDeductions = 0;
-    const totalDeductions = advancesDeducted + epfDeduction + otherDeductions;
+    const totalDeductions = advancesDeducted + epfDeduction + absentDeduction + otherDeductions;
     const netPayable = Math.max(0, grossEarnings - totalDeductions);
 
     // Check if formal payslip already generated
@@ -1454,6 +1635,8 @@ app.get('/api/rep/salary-slip/current', async (req: Request, res: Response) => {
         epfDeduction,
         employerEpf,
         employerEtf,
+        absentDeduction,
+        dailyBasicRate,
         otherDeductions,
         totalDeductions
       },
@@ -5355,6 +5538,64 @@ app.post('/api/lorries/:id/bills', async (req: Request, res: Response) => {
         console.warn('[Visit Verify] Note:', visitErr);
       }
 
+      // 8. Auto-verify HR Attendance for Rep & Driver on route billing
+      try {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const nowD = new Date();
+        const chkTime = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+
+        // Auto check-in Rep
+        const repEmp = await getOrLinkRepEmployee(req.body.userId, lorryId);
+        if (repEmp) {
+          const repAtt = await tx.attendance.findFirst({
+            where: { employeeId: repEmp.id, date: { gte: startOfToday } }
+          });
+          if (!repAtt || !repAtt.checkInTime) {
+            await tx.attendance.upsert({
+              where: { employeeId_date: { employeeId: repEmp.id, date: startOfToday } },
+              create: {
+                employeeId: repEmp.id,
+                date: startOfToday,
+                status: 'PRESENT',
+                checkInTime: chkTime,
+                notes: `Auto-verified PRESENT via Route Bill #${newOrder.orderNumber}`
+              },
+              update: {
+                status: 'PRESENT',
+                checkInTime: chkTime
+              }
+            });
+          }
+        }
+
+        // Auto check-in Driver
+        const drvEmp = await getOrLinkDriverEmployee(lorryId);
+        if (drvEmp) {
+          const drvAtt = await tx.attendance.findFirst({
+            where: { employeeId: drvEmp.id, date: { gte: startOfToday } }
+          });
+          if (!drvAtt || !drvAtt.checkInTime) {
+            await tx.attendance.upsert({
+              where: { employeeId_date: { employeeId: drvEmp.id, date: startOfToday } },
+              create: {
+                employeeId: drvEmp.id,
+                date: startOfToday,
+                status: 'PRESENT',
+                checkInTime: chkTime,
+                notes: `Auto-verified PRESENT via Route Bill #${newOrder.orderNumber}`
+              },
+              update: {
+                status: 'PRESENT',
+                checkInTime: chkTime
+              }
+            });
+          }
+        }
+      } catch (attErr) {
+        console.warn('[HR Attendance Auto-Verification Warning]', attErr);
+      }
+
       // Auto-fulfill linked pre-orders if specified
       if (Array.isArray(req.body.fulfilledPreOrderIds) && req.body.fulfilledPreOrderIds.length > 0) {
         try {
@@ -7469,6 +7710,64 @@ app.post('/api/orders', async (req: Request, res: Response) => {
         } catch (visitErr) {
           console.warn('[Visit Verify] Note:', visitErr);
         }
+      }
+
+      // 8. Auto-verify HR Attendance for Rep & Driver on route billing
+      try {
+        const startOfToday = new Date();
+        startOfToday.setHours(0, 0, 0, 0);
+        const nowD = new Date();
+        const chkTime = `${String(nowD.getHours()).padStart(2, '0')}:${String(nowD.getMinutes()).padStart(2, '0')}`;
+
+        // Auto check-in Rep
+        const repEmp = await getOrLinkRepEmployee(req.body.userId, lorryId);
+        if (repEmp) {
+          const repAtt = await tx.attendance.findFirst({
+            where: { employeeId: repEmp.id, date: { gte: startOfToday } }
+          });
+          if (!repAtt || !repAtt.checkInTime) {
+            await tx.attendance.upsert({
+              where: { employeeId_date: { employeeId: repEmp.id, date: startOfToday } },
+              create: {
+                employeeId: repEmp.id,
+                date: startOfToday,
+                status: 'PRESENT',
+                checkInTime: chkTime,
+                notes: `Auto-verified PRESENT via Route Bill #${newOrder.orderNumber}`
+              },
+              update: {
+                status: 'PRESENT',
+                checkInTime: chkTime
+              }
+            });
+          }
+        }
+
+        // Auto check-in Driver
+        const drvEmp = await getOrLinkDriverEmployee(lorryId);
+        if (drvEmp) {
+          const drvAtt = await tx.attendance.findFirst({
+            where: { employeeId: drvEmp.id, date: { gte: startOfToday } }
+          });
+          if (!drvAtt || !drvAtt.checkInTime) {
+            await tx.attendance.upsert({
+              where: { employeeId_date: { employeeId: drvEmp.id, date: startOfToday } },
+              create: {
+                employeeId: drvEmp.id,
+                date: startOfToday,
+                status: 'PRESENT',
+                checkInTime: chkTime,
+                notes: `Auto-verified PRESENT via Route Bill #${newOrder.orderNumber}`
+              },
+              update: {
+                status: 'PRESENT',
+                checkInTime: chkTime
+              }
+            });
+          }
+        }
+      } catch (attErr) {
+        console.warn('[HR Attendance Auto-Verification Warning]', attErr);
       }
 
       // Auto-fulfill linked pre-orders if specified
@@ -10813,7 +11112,18 @@ app.get('/api/hr/payroll/preview/:employeeId', async (req: Request, res: Respons
     });
     const advancesDeducted = pendingAdvances.reduce((acc: number, adv: any) => acc + adv.amount, 0);
 
-    // 5. Statutory EPF / ETF (Sri Lankan standard)
+    // 5. Unpaid Absence Deduction (No-Pay)
+    const standardWorkingDays = 26;
+    const dailyBasicRate = basicSalary > 0
+      ? Math.round((basicSalary / standardWorkingDays) * 100) / 100
+      : (employee.dailyRate || 0);
+
+    const totalUnpaidAbsences = absentDays;
+    const absentDeduction = employee.employmentType === 'FULL_TIME'
+      ? Math.round(totalUnpaidAbsences * dailyBasicRate)
+      : 0;
+
+    // 6. Statutory EPF / ETF (Sri Lankan standard)
     // Employee EPF: 8% of Basic
     // Employer EPF: 12% of Basic
     // Employer ETF: 3% of Basic
@@ -10821,7 +11131,7 @@ app.get('/api/hr/payroll/preview/:employeeId', async (req: Request, res: Respons
     const employerEpf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.12) : 0;
     const employerEtf = employee.employmentType === 'FULL_TIME' ? Math.round(basicSalary * 0.03) : 0;
 
-    const totalDeductions = advancesDeducted + epfDeduction;
+    const totalDeductions = advancesDeducted + epfDeduction + absentDeduction;
     const netPayable = Math.max(0, grossEarnings - totalDeductions);
 
     res.json({
@@ -10840,6 +11150,8 @@ app.get('/api/hr/payroll/preview/:employeeId', async (req: Request, res: Respons
       grossEarnings,
       advancesDeducted,
       pendingAdvances,
+      absentDeduction,
+      dailyBasicRate,
       epfDeduction,
       employerEpf,
       employerEtf,
@@ -10915,12 +11227,27 @@ app.post('/api/hr/payroll/generate', async (req: Request, res: Response) => {
     const employerEpf = employee.employmentType === 'FULL_TIME' ? Math.round(bSalary * 0.12) : 0;
     const employerEtf = employee.employmentType === 'FULL_TIME' ? Math.round(bSalary * 0.03) : 0;
 
-    const totalDeductions = advancesDeducted + epfDeduction + otherDed;
+    // Unpaid Absence Deduction (No-Pay)
+    const standardWorkingDays = 26;
+    const dailyBasicRate = bSalary > 0
+      ? Math.round((bSalary / standardWorkingDays) * 100) / 100
+      : (employee.dailyRate || 0);
+
+    const totalUnpaidAbsences = parseFloat(absentDays) || 0;
+    const absentDed = req.body.absentDeduction !== undefined
+      ? parseFloat(req.body.absentDeduction) || 0
+      : (employee.employmentType === 'FULL_TIME' ? Math.round(totalUnpaidAbsences * dailyBasicRate) : 0);
+
+    const totalOtherDeductions = otherDed + absentDed;
+    const totalDeductions = advancesDeducted + epfDeduction + totalOtherDeductions;
     const netPayable = Math.max(0, grossEarnings - totalDeductions);
 
     const dateStr = new Date().toISOString().slice(0, 10).replace(/-/g, '');
     const countTotal = await prisma.payroll.count();
     const payslipNumber = `PAY-${parsedYear}${parsedMonth.toString().padStart(2, '0')}-${(countTotal + 1).toString().padStart(4, '0')}`;
+
+    const absentNote = absentDed > 0 ? `Unpaid Absence: -Rs. ${absentDed.toLocaleString()} (${totalUnpaidAbsences} days)` : '';
+    const combinedNotes = [notes?.trim(), absentNote].filter(Boolean).join(' | ') || null;
 
     const result = await prisma.$transaction(async (tx) => {
       // 1. Create Payroll record
@@ -10944,13 +11271,13 @@ app.post('/api/hr/payroll/generate', async (req: Request, res: Response) => {
           epfDeduction,
           employerEpf,
           employerEtf,
-          otherDeductions: otherDed,
+          otherDeductions: totalOtherDeductions,
           totalDeductions,
           netPayable,
           paymentStatus,
           paymentMethod,
           paidAt: paymentStatus === 'PAID' ? new Date() : null,
-          notes: notes?.trim() || null
+          notes: combinedNotes
         },
         include: { employee: true }
       });

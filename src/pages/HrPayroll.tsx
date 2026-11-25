@@ -1699,6 +1699,7 @@ const RunPayrollModal: React.FC<RunPayrollModalProps> = ({
         performanceBonus: bonus,
         advancesDeducted: preview.advancesDeducted,
         epfDeduction: preview.epfDeduction,
+        absentDeduction: preview.absentDeduction,
         employerEpf: preview.employerEpf,
         employerEtf: preview.employerEtf,
         otherDeductions,
@@ -1853,6 +1854,12 @@ const RunPayrollModal: React.FC<RunPayrollModalProps> = ({
                   <div className="font-bold text-rose-500 text-[10.5px] uppercase tracking-wider mb-2">
                     Deductions
                   </div>
+                  {preview.absentDeduction > 0 && (
+                    <div className="flex justify-between text-rose-600 font-semibold bg-rose-50 px-2 py-1 rounded-lg border border-rose-100">
+                      <span>Unpaid Absence ({preview.absentDays}d):</span>
+                      <span className="font-mono">-{formatMoney(preview.absentDeduction)}</span>
+                    </div>
+                  )}
                   <div className="flex justify-between text-rose-600">
                     <span>Salary Advances:</span>
                     <span className="font-mono font-medium">-{formatMoney(preview.advancesDeducted)}</span>
