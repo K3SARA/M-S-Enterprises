@@ -25,9 +25,11 @@ import {
 import { LorryService, RouteService, SettingsService, BackupService, AuthService } from '../services/api';
 import { Lorry, Route, SystemSettings, User } from '../types';
 import { useCurrency, CURRENCIES, CurrencyCode } from '../context/CurrencyContext';
+import { useFontSize, FONT_SIZE_PRESETS, PRESET_ORDER, FontSizeLevel } from '../context/FontSizeContext';
 
 export const Settings: React.FC = () => {
   const { currency, setCurrency } = useCurrency();
+  const { fontSizeLevel, setFontSizeLevel } = useFontSize();
   const [lorries, setLorries] = useState<Lorry[]>([]);
   const [routes, setRoutes] = useState<Route[]>([]);
   const [settings, setSettings] = useState<SystemSettings>({
@@ -902,7 +904,24 @@ export const Settings: React.FC = () => {
               />
             </div>
 
-            <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
+              <div>
+                <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
+                  Display Font Size
+                </label>
+                <select
+                  value={fontSizeLevel}
+                  onChange={(e) => setFontSizeLevel(e.target.value as FontSizeLevel)}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
+                >
+                  {PRESET_ORDER.map(lvl => (
+                    <option key={lvl} value={lvl}>
+                      {FONT_SIZE_PRESETS[lvl].label} ({FONT_SIZE_PRESETS[lvl].percentage}%)
+                    </option>
+                  ))}
+                </select>
+              </div>
+
               <div>
                 <label className="text-xs font-bold text-slate-500 uppercase tracking-wider block mb-1.5">
                   Default App Currency

@@ -25,6 +25,7 @@ import {
   X
 } from 'lucide-react';
 import { useCurrency, CURRENCIES, CurrencyCode } from '../context/CurrencyContext';
+import { FontSizeInlineStepper } from './FontSizeControl';
 import { User } from '../types';
 
 interface SidebarProps {
@@ -214,6 +215,9 @@ export const Sidebar: React.FC<SidebarProps> = ({
 
       {/* Footer System Status & Currency Selector */}
       <div className="p-4 border-t border-slate-100 space-y-2.5 bg-white shrink-0">
+        {/* App Text Size Adjuster */}
+        <FontSizeInlineStepper />
+
         {/* Currency Switcher */}
         <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl space-y-2 shadow-2xs">
           <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">

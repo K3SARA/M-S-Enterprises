@@ -32,6 +32,8 @@ import { BankController } from './pages/BankController';
 import { PreOrders } from './pages/PreOrders';
 import { InvoiceModal } from './components/InvoiceModal';
 import { CurrencyProvider, useCurrency, CURRENCIES } from './context/CurrencyContext';
+import { FontSizeProvider } from './context/FontSizeContext';
+import { FontSizeButton } from './components/FontSizeControl';
 import { Order, User } from './types';
 
 export const AppContent: React.FC = () => {
@@ -120,6 +122,7 @@ export const AppContent: React.FC = () => {
           </div>
 
           <div className="flex items-center gap-2">
+            <FontSizeButton showLabel />
             <span className="px-2.5 py-1 rounded-lg text-xs font-bold bg-blue-50 text-[#0C3B9B] border border-blue-200/60 font-mono">
               {CURRENCIES[currency]?.symbol || 'Rs.'}
             </span>
@@ -239,9 +242,11 @@ export const AppContent: React.FC = () => {
 
 export const App: React.FC = () => {
   return (
-    <CurrencyProvider>
-      <AppContent />
-    </CurrencyProvider>
+    <FontSizeProvider>
+      <CurrencyProvider>
+        <AppContent />
+      </CurrencyProvider>
+    </FontSizeProvider>
   );
 };
 

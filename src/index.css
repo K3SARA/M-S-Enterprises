@@ -9,6 +9,57 @@
     text-rendering: optimizeLegibility;
     -webkit-font-smoothing: antialiased;
     -moz-osx-font-smoothing: grayscale;
+    transition: font-size 0.15s ease-out;
+  }
+
+  /* Dynamic Font Size Presets */
+  html[data-font-size="compact"] {
+    font-size: 14px;
+  }
+  html[data-font-size="standard"] {
+    font-size: 15.5px;
+  }
+  html[data-font-size="large"] {
+    font-size: 17px;
+  }
+  html[data-font-size="xlarge"] {
+    font-size: 18.5px;
+  }
+  html[data-font-size="huge"] {
+    font-size: 20px;
+  }
+
+  /* Micro-text proportional scaling */
+  html[data-font-size="large"] [class*="text-[10px]"],
+  html[data-font-size="large"] [class*="text-[11px]"] {
+    font-size: 12px;
+  }
+  html[data-font-size="large"] [class*="text-[9px]"],
+  html[data-font-size="large"] [class*="text-[9.5px]"] {
+    font-size: 11px;
+  }
+
+  html[data-font-size="xlarge"] [class*="text-[10px]"],
+  html[data-font-size="xlarge"] [class*="text-[11px]"] {
+    font-size: 13.5px;
+  }
+  html[data-font-size="xlarge"] [class*="text-[9px]"],
+  html[data-font-size="xlarge"] [class*="text-[9.5px]"] {
+    font-size: 12.5px;
+  }
+
+  html[data-font-size="huge"] [class*="text-[10px]"],
+  html[data-font-size="huge"] [class*="text-[11px]"] {
+    font-size: 15px;
+  }
+  html[data-font-size="huge"] [class*="text-[9px]"],
+  html[data-font-size="huge"] [class*="text-[9.5px]"] {
+    font-size: 14px;
+  }
+
+  html[data-font-size="compact"] [class*="text-[10px]"],
+  html[data-font-size="compact"] [class*="text-[11px]"] {
+    font-size: 9.5px;
   }
 
   * {

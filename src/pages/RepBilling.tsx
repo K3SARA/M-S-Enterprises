@@ -82,6 +82,7 @@ import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
 import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal';
 import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
+import { FontSizeButton, FontSizeInlineStepper } from '../components/FontSizeControl';
 import { OfflineSyncService, QueuedOfflineBill } from '../services/offlineSync';
 import { executeSystemPrint } from '../utils/bluetoothPrinter';
 import { resolveTierUnitPrice } from '../utils/pricing';
@@ -2334,6 +2335,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
               </span>
             )}
           </button>
+
+          {/* Display Font Size Quick Toggle */}
+          <FontSizeButton showLabel />
 
           {/* Shift Hub (•••) Consolidated Menu Button */}
           <button
@@ -5635,6 +5639,11 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition" />
                 </button>
+              </div>
+
+              {/* Display Font Size Control */}
+              <div className="pt-1">
+                <FontSizeInlineStepper />
               </div>
 
               {/* End Shift & Logout */}

@@ -15,6 +15,17 @@
   <link
     href="https://fonts.googleapis.com/css2?family=JetBrains+Mono:ital,wght@0,400;0,500;0,600;0,700;1,400&family=Plus+Jakarta+Sans:ital,wght@0,400;0,500;0,600;0,700;0,800;1,400;1,600&display=swap"
     rel="stylesheet">
+  <!-- Immediate Font Size Restore Script -->
+  <script>
+    try {
+      var s = localStorage.getItem('distributor_font_size');
+      var sizes = { compact: '14px', standard: '15.5px', large: '17px', xlarge: '18.5px', huge: '20px' };
+      if (s && sizes[s]) {
+        document.documentElement.style.fontSize = sizes[s];
+        document.documentElement.setAttribute('data-font-size', s);
+      }
+    } catch (e) {}
+  </script>
 </head>
 
 <body class="bg-[#F1F3F6] text-[#1D1D1F] select-none font-sans antialiased">
