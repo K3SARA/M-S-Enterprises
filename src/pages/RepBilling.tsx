@@ -1251,6 +1251,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     }
     const stockInfo = lorryStockMap.get(product.id);
     const lorryStock = stockInfo ? stockInfo.stock : product.currentStock;
+    if (lorryStock <= 0) {
+      return;
+    }
     const buyRatio = product.freeRatioBuy || 0;
     const getRatio = product.freeRatioGet || 0;
     const calcFree = (q: number) => (buyRatio > 0 && getRatio > 0 && q > 0 ? Math.floor(q / buyRatio) * getRatio : 0);
@@ -1259,10 +1262,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       const existing = prev.find(i => i.productId === product.id);
       if (existing) {
         const nextQty = existing.quantity + qty;
+        if (qty > 0 && nextQty > lorryStock) {
+          return prev; // Block adding more than available lorry stock
+        }
         if (nextQty <= 0 && (existing.freeQuantity || 0) <= 0) {
           return prev.filter(i => i.productId !== product.id);
         }
-        const safeQty = Math.max(0, nextQty);
+        const safeQty = Math.min(lorryStock, Math.max(0, nextQty));
         const resolved = resolveTierUnitPrice(product, safeQty, {
           manualPrice: existing.unitPrice,
           isManual: existing.isManualPrice
@@ -1276,7 +1282,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           freeQuantity: existing.manualFree ? existing.freeQuantity : calcFree(safeQty)
         } : i);
       }
-      const initialQty = Math.max(1, qty);
+      const initialQty = Math.min(lorryStock, Math.max(1, qty));
       const resolved = resolveTierUnitPrice(product, initialQty);
       return [
         ...prev,
@@ -1341,6 +1347,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   const updateCartQty = (productId: string, delta: number) => {
     const product = products.find(p => p.id === productId);
+    const stockInfo = lorryStockMap.get(productId);
+    const lorryStock = stockInfo ? stockInfo.stock : (product?.currentStock ?? Infinity);
     const buyRatio = product?.freeRatioBuy || 0;
     const getRatio = product?.freeRatioGet || 0;
     const calcFree = (q: number) => (buyRatio > 0 && getRatio > 0 && q > 0 ? Math.floor(q / buyRatio) * getRatio : 0);
@@ -1350,7 +1358,10 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         .map(i => {
           if (i.productId === productId) {
             const next = i.quantity + delta;
-            const safeQty = Math.max(0, next);
+            if (delta > 0 && next > lorryStock) {
+              return i; // Hard blocker: Cannot exceed available lorry stock
+            }
+            const safeQty = Math.min(lorryStock, Math.max(0, next));
             const freeQty = i.manualFree ? i.freeQuantity : calcFree(safeQty);
             if (safeQty <= 0 && freeQty <= 0) {
               return null;
@@ -1379,6 +1390,8 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   const setCartItemQty = (productId: string, qty: number) => {
     const product = products.find(p => p.id === productId);
+    const stockInfo = lorryStockMap.get(productId);
+    const lorryStock = stockInfo ? stockInfo.stock : (product?.currentStock ?? Infinity);
     const buyRatio = product?.freeRatioBuy || 0;
     const getRatio = product?.freeRatioGet || 0;
     const calcFree = (q: number) => (buyRatio > 0 && getRatio > 0 && q > 0 ? Math.floor(q / buyRatio) * getRatio : 0);
@@ -1387,7 +1400,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
       prev
         .map(i => {
           if (i.productId === productId) {
-            const safeQty = Math.max(0, qty);
+            const safeQty = Math.min(lorryStock, Math.max(0, qty));
             const freeQty = i.manualFree ? i.freeQuantity : calcFree(safeQty);
             if (safeQty <= 0 && freeQty <= 0) {
               return null;
@@ -3297,19 +3310,25 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                             <input
                               type="number"
                               min="0"
+                              max={currentTotalLorryStock}
                               value={item.quantity === 0 ? '0' : item.quantity}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                                setCartItemQty(item.productId, isNaN(val) ? 0 : Math.max(0, val));
+                                setCartItemQty(item.productId, isNaN(val) ? 0 : Math.min(currentTotalLorryStock, Math.max(0, val)));
                               }}
                               onFocus={(e) => e.target.select()}
                               className="w-10 h-6 bg-transparent text-center font-mono font-bold text-xs text-slate-900 focus:outline-none focus:bg-blue-50/50 rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button
                               type="button"
+                              disabled={item.quantity >= currentTotalLorryStock}
                               onClick={() => updateCartQty(item.productId, 1)}
-                              className="w-6 h-6 bg-slate-50 hover:bg-slate-100 rounded flex items-center justify-center font-bold text-slate-700 text-xs active:scale-95 transition cursor-pointer"
-                              title="Increase billed quantity"
+                              className={`w-6 h-6 rounded flex items-center justify-center font-bold text-xs transition ${
+                                item.quantity >= currentTotalLorryStock
+                                  ? 'bg-slate-100 text-slate-300 cursor-not-allowed'
+                                  : 'bg-slate-50 hover:bg-slate-100 text-slate-700 active:scale-95 cursor-pointer'
+                              }`}
+                              title={item.quantity >= currentTotalLorryStock ? 'Max stock reached on lorry' : 'Increase billed quantity'}
                             >
                               +
                             </button>
@@ -3628,19 +3647,25 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                             <input
                               type="number"
                               min="0"
+                              max={regularStock}
                               value={inCart.quantity === 0 ? '0' : inCart.quantity}
                               onChange={(e) => {
                                 const val = e.target.value === '' ? 0 : parseInt(e.target.value, 10);
-                                setCartItemQty(product.id, isNaN(val) ? 0 : Math.max(0, val));
+                                setCartItemQty(product.id, isNaN(val) ? 0 : Math.min(regularStock, Math.max(0, val)));
                               }}
                               onFocus={(e) => e.target.select()}
                               className="w-9 h-7 bg-transparent text-center font-mono font-bold text-xs text-blue-900 focus:outline-none focus:bg-white focus:rounded [appearance:textfield] [&::-webkit-outer-spin-button]:appearance-none [&::-webkit-inner-spin-button]:appearance-none"
                             />
                             <button
                               type="button"
+                              disabled={inCart.quantity >= regularStock}
                               onClick={() => addToCart(product, 1)}
-                              className="w-7 h-7 bg-blue-600 text-white rounded flex items-center justify-center font-bold text-xs shadow-2xs hover:bg-blue-700 active:scale-95 transition cursor-pointer"
-                              title="Increase quantity"
+                              className={`w-7 h-7 rounded flex items-center justify-center font-bold text-xs shadow-2xs transition ${
+                                inCart.quantity >= regularStock
+                                  ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                  : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 cursor-pointer'
+                              }`}
+                              title={inCart.quantity >= regularStock ? 'Max stock reached on lorry' : 'Increase quantity'}
                             >
                               +
                             </button>
@@ -3672,10 +3697,15 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                         <div className="flex items-center gap-1">
                           <button
                             type="button"
+                            disabled={regularStock <= 0}
                             onClick={() => addToCart(product, 1)}
-                            className="py-1 px-3 bg-blue-600 text-white font-bold text-xs rounded-lg shadow-xs hover:bg-blue-700 active:scale-95 transition cursor-pointer"
+                            className={`py-1 px-3 font-bold text-xs rounded-lg shadow-xs transition ${
+                              regularStock <= 0
+                                ? 'bg-slate-200 text-slate-400 cursor-not-allowed'
+                                : 'bg-blue-600 text-white hover:bg-blue-700 active:scale-95 cursor-pointer'
+                            }`}
                           >
-                            + Add
+                            {regularStock <= 0 ? 'No Stock' : '+ Add'}
                           </button>
                           <button
                             type="button"
