@@ -168,8 +168,8 @@ export const LorryService = {
     customerId: string;
     items: { productId: string; quantity: number; freeQuantity?: number; unitPrice?: number; discountPercent?: number; discountAmount?: number }[];
     returnItems?: { productId: string; quantity: number; unitPrice?: number; returnType: 'DAMAGE' | 'RESALE'; reason?: string }[];
-    paymentMethod: 'CASH' | 'CREDIT' | 'CHEQUE';
-    cashReceived: number;
+    paymentMethod: 'CASH' | 'CREDIT' | 'CHEQUE' | 'PARTIAL';
+    cashReceived?: number;
     discountAmount?: number;
     discountPercentage?: number;
     appliedCreditAmount?: number;

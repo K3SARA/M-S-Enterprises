@@ -76,7 +76,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
   const [walkInPhone, setWalkInPhone] = useState<string>('');
   const [billItems, setBillItems] = useState<BillItemRow[]>([{ productId: '', quantity: 1, freeQuantity: 0 }]);
   const [returnItems, setReturnItems] = useState<BillReturnRow[]>([]);
-  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CREDIT' | 'CHEQUE'>('CASH');
+  const [paymentMethod, setPaymentMethod] = useState<'CASH' | 'CREDIT' | 'CHEQUE' | 'PARTIAL'>('CASH');
   const [cashReceived, setCashReceived] = useState<string>('');
   const [chequeNumber, setChequeNumber] = useState<string>('');
   const [bankName, setBankName] = useState<string>('');
@@ -640,6 +640,8 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       setCashReceived(netTotal.toFixed(2));
     } else if (paymentMethod === 'CREDIT') {
       setCashReceived('0');
+    } else if (paymentMethod === 'PARTIAL' && (cashReceived === '0' || cashReceived === netTotal.toFixed(2) || !cashReceived)) {
+      setCashReceived((Math.round((netTotal * 0.5) / 10) * 10).toFixed(2));
     }
   }, [paymentMethod, netTotal]);
 
@@ -678,7 +680,7 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
       }
     }
 
-    if (paymentMethod === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
+    if ((paymentMethod === 'CREDIT' || (paymentMethod === 'PARTIAL' && Math.max(0, netTotal - (parseFloat(cashReceived) || 0)) > 0)) && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
       setShowAdminPasscodeModal(true);
       return;
     }
@@ -1629,20 +1631,21 @@ export const BillEntry: React.FC<BillEntryProps> = ({ onViewInvoice }) => {
                   onChange={(e) => {
                     const m = e.target.value as any;
                     setPaymentMethod(m);
-                    if (m === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
+                    if ((m === 'CREDIT' || m === 'PARTIAL') && selectedCustomer?.creditRisk?.isCreditBlocked && !adminOverridePasscode) {
                       setShowAdminPasscodeModal(true);
                     }
                   }}
                   className="w-full bg-white border border-slate-300 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-800 focus:outline-none focus:ring-2 focus:ring-blue-500 shadow-2xs"
                 >
-                  <option value="CASH">Cash Payment</option>
+                  <option value="CASH">Cash Payment (Full)</option>
                   <option value="CREDIT">Credit (Pay Later)</option>
+                  <option value="PARTIAL">Partial Payment (Split Cash & Credit)</option>
                   <option value="CHEQUE">Cheque</option>
                 </select>
               </div>
 
               {/* Hard Credit Stop Alert / Passcode Override Banner */}
-              {paymentMethod === 'CREDIT' && selectedCustomer?.creditRisk?.isCreditBlocked && (
+              {(paymentMethod === 'CREDIT' || paymentMethod === 'PARTIAL') && selectedCustomer?.creditRisk?.isCreditBlocked && (
                 <div className="sm:col-span-3">
                   {adminOverridePasscode ? (
                     <div className="p-3 bg-emerald-50 border border-emerald-300 rounded-xl flex items-center justify-between text-xs animate-fadeIn">

@@ -346,7 +346,7 @@ export interface Order {
   route?: Route | null;
   status: 'PENDING' | 'DISPATCHED' | 'DELIVERED' | 'CANCELLED';
   paymentStatus: 'UNPAID' | 'PARTIAL' | 'PAID';
-  paymentMethod: 'CASH' | 'CREDIT' | 'CHEQUE';
+  paymentMethod: 'CASH' | 'CREDIT' | 'CHEQUE' | 'PARTIAL';
   chequeNumber?: string | null;
   bankName?: string | null;
   chequeDate?: string | null;
