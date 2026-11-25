@@ -1892,29 +1892,6 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         OfflineSyncService.saveOfflineBill(queuedBill);
         setPendingBillsCount(OfflineSyncService.getPendingBills().length);
 
-        // Deduct from local lorry stock in memory
-        if (selectedLorryId) {
-          setLorries(prev => prev.map(l => {
-            if (l.id === selectedLorryId && Array.isArray(l.lorryStocks)) {
-              return {
-                ...l,
-                lorryStocks: l.lorryStocks.map(ls => {
-                  const cartItem = cart.find(ci => ci.productId === ls.productId);
-                  if (cartItem) {
-                    return {
-                      ...ls,
-                      quantity: Math.max(0, ls.quantity - cartItem.quantity),
-                      freeQuantity: Math.max(0, (ls.freeQuantity || 0) - (cartItem.freeQuantity || 0))
-                    };
-                  }
-                  return ls;
-                })
-              };
-            }
-            return l;
-          }));
-        }
-
         return {
           id: queuedBill.localId,
           orderNumber: queuedBill.orderNumber,
@@ -1975,6 +1952,29 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
       setCheckoutSuccessOrder(createdOrder);
 
+      // Deduct from local lorry stock in memory immediately (live UI update for next bill & stock views)
+      if (selectedLorryId) {
+        setLorries(prev => prev.map(l => {
+          if (l.id === selectedLorryId && Array.isArray(l.lorryStocks)) {
+            return {
+              ...l,
+              lorryStocks: l.lorryStocks.map(ls => {
+                const cartItem = cart.find(ci => ci.productId === ls.productId);
+                if (cartItem) {
+                  return {
+                    ...ls,
+                    quantity: Math.max(0, ls.quantity - cartItem.quantity),
+                    freeQuantity: Math.max(0, (ls.freeQuantity || 0) - (cartItem.freeQuantity || 0))
+                  };
+                }
+                return ls;
+              })
+            };
+          }
+          return l;
+        }));
+      }
+
       // Decrement customer's locally cached return credit if applied
       if (appliedReturnCredit > 0 && selectedCustomerId) {
         setCustomers(prev => prev.map(c => {
@@ -1991,7 +1991,18 @@ export const RepBilling: React.FC<RepBillingProps> = ({
         await Promise.all([
           loadTargets(selectedLorryId || undefined),
           loadFinishedBills(selectedLorryId || undefined),
-          loadOptimizedRoute()
+          loadOptimizedRoute(),
+          LorryService.getAll().then(updatedLorries => {
+            if (Array.isArray(updatedLorries) && updatedLorries.length > 0) {
+              setLorries(updatedLorries);
+              OfflineSyncService.cacheRepData({
+                customers,
+                products,
+                lorries: updatedLorries,
+                lorryStockMap
+              });
+            }
+          }).catch(err => console.warn('Lorry stock live reload warning:', err))
         ]);
       } else {
         setFinishedBills(prev => [createdOrder, ...prev]);
@@ -2025,6 +2036,13 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     loadTargets(selectedLorryId || undefined);
     loadFinishedBills(selectedLorryId || undefined);
     loadOptimizedRoute();
+    if (navigator.onLine) {
+      LorryService.getAll().then(updatedLorries => {
+        if (Array.isArray(updatedLorries) && updatedLorries.length > 0) {
+          setLorries(updatedLorries);
+        }
+      }).catch(err => console.warn('Lorry stock reload on new bill warning:', err));
+    }
   };
 
   const handleCancelCheckout = () => {
@@ -3183,6 +3201,9 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   const lineTotal = Math.max(0, itemGross - itemDiscount);
                   const isPureFree = item.quantity === 0 && (item.freeQuantity || 0) > 0;
                   const isDiscountOpen = Boolean(openItemDiscounts[item.productId] || itemDiscount > 0);
+                  const stockInfo = lorryStockMap.get(item.productId);
+                  const currentTotalLorryStock = stockInfo ? stockInfo.stock : (item.availableStock ?? 0);
+                  const remainingStock = Math.max(0, currentTotalLorryStock - item.quantity);
 
                   return (
                     <div
@@ -3222,7 +3243,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                               </span>
                             )}
                             {item.availableStock !== undefined && (
-                              <span className="text-slate-400">• Lorry Stock: {item.availableStock}</span>
+                              <span className="text-slate-400 inline-flex items-center gap-1">
+                                <span>• Lorry Stock: {currentTotalLorryStock}</span>
+                                <span className={`font-semibold ${remainingStock === 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                                  ({remainingStock} left)
+                                </span>
+                              </span>
                             )}
                           </p>
                         </div>
@@ -3573,7 +3599,14 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       <h4 className="text-xs font-bold text-slate-900 truncate">{product.name}</h4>
                       <p className="text-[11px] text-slate-500 font-mono">
                         <span className="font-bold text-blue-600">{formatMoney(product.unitPrice)}</span>
-                        <span className="ml-1 text-slate-500">• Stock: {regularStock}</span>
+                        <span className="ml-1 text-slate-500">
+                          • Stock: {regularStock}
+                          {inCart && inCart.quantity > 0 && (
+                            <span className={`ml-1 font-semibold ${Math.max(0, regularStock - inCart.quantity) === 0 ? 'text-amber-600' : 'text-emerald-700'}`}>
+                              ({Math.max(0, regularStock - inCart.quantity)} left)
+                            </span>
+                          )}
+                        </span>
                         {freeStock > 0 && (
                           <span className="ml-1 text-emerald-700 font-bold bg-emerald-50 px-1 rounded">+{freeStock} Free</span>
                         )}
