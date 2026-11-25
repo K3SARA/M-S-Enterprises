@@ -371,6 +371,11 @@ export const Inventory: React.FC<InventoryProps> = ({ onNavigateToSuppliers, cur
                               Raw Material
                             </span>
                           )}
+                          {p.isReturnableBottle && (
+                            <span className="text-[10px] font-bold px-1.5 py-0.2 rounded bg-cyan-50 text-cyan-800 border border-cyan-200/80 font-mono flex items-center gap-1">
+                              <span>🍾</span> {p.bottlesPerUnit || 24} Btls/Unit (Rs. {p.bottleDepositFee ?? 120})
+                            </span>
+                          )}
                           {p.freeRatioBuy && p.freeRatioBuy > 0 && p.freeRatioGet ? (
                             <span className="px-2 py-0.5 bg-blue-50 text-blue-700 font-semibold rounded-md text-xs">
                               Promo: Buy {p.freeRatioBuy} + {p.freeRatioGet} Free

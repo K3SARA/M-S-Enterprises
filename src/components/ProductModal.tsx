@@ -69,8 +69,8 @@ export const ProductModal: React.FC<ProductModalProps> = ({
         freeRatioGet: (product.freeRatioGet || 0).toString(),
         isRawMaterial: Boolean(product.isRawMaterial),
         isReturnableBottle: Boolean(product.isReturnableBottle),
-        bottlesPerUnit: (product.bottlesPerUnit || 24).toString(),
-        bottleDepositFee: (product.bottleDepositFee ?? 120).toString(),
+        bottlesPerUnit: (product.bottlesPerUnit && product.bottlesPerUnit > 0 ? product.bottlesPerUnit : 24).toString(),
+        bottleDepositFee: (product.bottleDepositFee !== undefined && product.bottleDepositFee !== null ? product.bottleDepositFee : 120).toString(),
         supplierId: product.supplierId || ''
       });
       const tiers = (product.priceTiers || []).map(t => ({
