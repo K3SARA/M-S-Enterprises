@@ -258,3 +258,4 @@ export const FontSizeInlineStepper: React.FC = () => {
     </div>
   );
 };
+

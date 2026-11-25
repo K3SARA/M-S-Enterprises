@@ -148,3 +148,4 @@ export const useFontSize = (): FontSizeContextType => {
   }
   return context;
 };
+

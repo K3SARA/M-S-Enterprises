@@ -52,12 +52,26 @@ export const AppContent: React.FC = () => {
 
   const handleLogout = () => {
     localStorage.removeItem('distributor_auth_user');
+    try {
+      sessionStorage.removeItem('rep_hide_next_stop_card');
+      sessionStorage.removeItem('rep_hide_route_strip_card');
+    } catch { }
     setCurrentUser(null);
   };
 
   // 1. Unauthenticated: Render dedicated Login Page
   if (!currentUser) {
-    return <Login onLoginSuccess={setCurrentUser} />;
+    return (
+      <Login
+        onLoginSuccess={(user) => {
+          try {
+            sessionStorage.removeItem('rep_hide_next_stop_card');
+            sessionStorage.removeItem('rep_hide_route_strip_card');
+          } catch { }
+          setCurrentUser(user);
+        }}
+      />
+    );
   }
 
   // 2. Enterprise Supplier Portal (Tier 1 Principal Brand)

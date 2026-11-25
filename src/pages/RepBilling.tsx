@@ -336,6 +336,56 @@ export const RepBilling: React.FC<RepBillingProps> = ({
     }
   });
 
+  // Route Guidance Tiles Dismissed State (removed completely visually until user signs out and signs in again)
+  const [isNextStopDismissed, setIsNextStopDismissed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('rep_hide_next_stop_card') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const [isRouteStripDismissed, setIsRouteStripDismissed] = useState<boolean>(() => {
+    try {
+      return sessionStorage.getItem('rep_hide_route_strip_card') === 'true';
+    } catch {
+      return false;
+    }
+  });
+
+  const handleDismissNextStop = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsNextStopDismissed(true);
+    try {
+      sessionStorage.setItem('rep_hide_next_stop_card', 'true');
+    } catch { }
+  };
+
+  const handleDismissRouteStrip = (e?: React.MouseEvent) => {
+    if (e) e.stopPropagation();
+    setIsRouteStripDismissed(true);
+    try {
+      sessionStorage.setItem('rep_hide_route_strip_card', 'true');
+    } catch { }
+  };
+
+  const handleRestoreRouteTiles = () => {
+    setIsNextStopDismissed(false);
+    setIsRouteStripDismissed(false);
+    try {
+      sessionStorage.removeItem('rep_hide_next_stop_card');
+      sessionStorage.removeItem('rep_hide_route_strip_card');
+    } catch { }
+  };
+
+  const handleLogoutRep = () => {
+    try {
+      sessionStorage.removeItem('rep_hide_next_stop_card');
+      sessionStorage.removeItem('rep_hide_route_strip_card');
+    } catch { }
+    if (onLogout) onLogout();
+  };
+
   const toggleNextStopMinimized = () => {
     setIsNextStopMinimized(prev => {
       const next = !prev;
@@ -2129,7 +2179,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           {onLogout && (
             <button
               type="button"
-              onClick={onLogout}
+              onClick={handleLogoutRep}
               className="text-xs text-zinc-500 hover:text-zinc-300 transition cursor-pointer flex items-center gap-1.5 py-1 px-2.5 rounded-full hover:bg-zinc-900"
             >
               <LogOut className="w-3.5 h-3.5" />
@@ -2541,7 +2591,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             )}
 
             {/* AI TSP Next Recommended Stop Hero Card */}
-            {routeOptimization?.nextStop && !customerSearch && (
+            {routeOptimization?.nextStop && !customerSearch && !isNextStopDismissed && (
               isNextStopMinimized ? (
                 /* MINIMIZED SLIM NEXT STOP PILL */
                 <div className="bg-gradient-to-r from-blue-600 via-indigo-600 to-slate-900 text-white rounded-2xl p-2.5 px-3.5 shadow-md border border-blue-400/30 flex items-center justify-between gap-2.5 transition-all duration-200">
@@ -2597,6 +2647,17 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       <Receipt className="w-3 h-3" />
                       <span>Start</span>
                     </button>
+
+                    {/* Close (X) button to completely remove tile until next login */}
+                    <button
+                      type="button"
+                      onClick={handleDismissNextStop}
+                      className="w-6 h-6 rounded-full bg-white/15 hover:bg-white/25 active:scale-95 text-white/80 hover:text-white flex items-center justify-center transition border border-white/20 shadow-2xs cursor-pointer shrink-0"
+                      title="Remove Next Stop card (will only appear after sign-in)"
+                      aria-label="Remove Next Stop card"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
                   </div>
                 </div>
               ) : (
@@ -2624,11 +2685,24 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                       </button>
                     </div>
 
-                    <div className="flex items-center gap-1.5 text-[11px] font-bold bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
-                      <Clock className="w-3 h-3 text-blue-200" />
-                      <span>~{routeOptimization.nextStop.estimatedDriveTimeMinutes}m</span>
-                      <span className="text-white/60">•</span>
-                      <span>{routeOptimization.nextStop.distanceFromPrevKm} km</span>
+                    <div className="flex items-center gap-1.5 shrink-0">
+                      <div className="flex items-center gap-1.5 text-[11px] font-bold bg-black/30 backdrop-blur-md px-2.5 py-1 rounded-full border border-white/10">
+                        <Clock className="w-3 h-3 text-blue-200" />
+                        <span>~{routeOptimization.nextStop.estimatedDriveTimeMinutes}m</span>
+                        <span className="text-white/60">•</span>
+                        <span>{routeOptimization.nextStop.distanceFromPrevKm} km</span>
+                      </div>
+
+                      {/* Close (X) button to completely remove tile until next login */}
+                      <button
+                        type="button"
+                        onClick={handleDismissNextStop}
+                        className="w-6 h-6 rounded-full bg-black/30 hover:bg-black/50 active:scale-95 text-white/80 hover:text-white flex items-center justify-center transition border border-white/10 shadow-2xs cursor-pointer shrink-0"
+                        title="Remove Next Stop card (will only appear after sign-in)"
+                        aria-label="Remove Next Stop card"
+                      >
+                        <X className="w-3.5 h-3.5" />
+                      </button>
                     </div>
                   </div>
 
@@ -2698,7 +2772,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             )}
 
             {/* Smart Route Intelligence Strip & View Switcher */}
-            {routeOptimization && (
+            {routeOptimization && !isRouteStripDismissed && (
               <div className="p-3 bg-black border border-slate-800 rounded-2xl space-y-2.5 shadow-md text-white">
                 <div className="flex items-center justify-between text-xs">
                   <div className="flex items-center gap-1.5 min-w-0">
@@ -2712,11 +2786,24 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     </span>
                   </div>
 
-                  {routeOptimization.savedDistanceKm > 0 && (
-                    <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-lg shrink-0">
-                      Saved {routeOptimization.savedDistanceKm} km ({routeOptimization.savedPercentage}% Fuel)
-                    </span>
-                  )}
+                  <div className="flex items-center gap-1.5 shrink-0">
+                    {routeOptimization.savedDistanceKm > 0 && (
+                      <span className="text-[10px] font-bold text-emerald-300 bg-emerald-950/80 border border-emerald-700/60 px-2 py-0.5 rounded-lg shrink-0">
+                        Saved {routeOptimization.savedDistanceKm} km ({routeOptimization.savedPercentage}% Fuel)
+                      </span>
+                    )}
+
+                    {/* Close (X) button to completely remove tile until next login */}
+                    <button
+                      type="button"
+                      onClick={handleDismissRouteStrip}
+                      className="w-6 h-6 rounded-full bg-slate-800 hover:bg-slate-700 active:scale-95 text-slate-400 hover:text-white flex items-center justify-center transition border border-slate-700 shadow-2xs cursor-pointer shrink-0"
+                      title="Remove Route overview card (will only appear after sign-in)"
+                      aria-label="Remove Route overview card"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
                 </div>
 
                 {/* Progress bar */}
@@ -5670,6 +5757,33 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                 </button>
               </div>
 
+              {/* Restore Route Guidance Cards (visible if tiles were dismissed via X) */}
+              {(isNextStopDismissed || isRouteStripDismissed) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    handleRestoreRouteTiles();
+                    setShowShiftHubModal(false);
+                  }}
+                  className="w-full p-3 rounded-2xl bg-blue-50 border border-blue-200/90 hover:bg-blue-100 transition flex items-center justify-between text-left shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-2.5">
+                    <Sparkles className="w-4 h-4 text-blue-600" />
+                    <div>
+                      <span className="text-xs font-bold text-blue-950 block">
+                        Restore Route Guidance Tiles
+                      </span>
+                      <span className="text-[10px] text-blue-700">
+                        Unhide Next Stop and Route summary cards on Step 1
+                      </span>
+                    </div>
+                  </div>
+                  <span className="text-[10px] font-bold px-2 py-0.5 rounded-md bg-blue-200 text-blue-900 shrink-0">
+                    Unhide
+                  </span>
+                </button>
+              )}
+
               {/* End Shift & Logout */}
               {onLogout && (
                 <div className="pt-2">
@@ -5677,7 +5791,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                     type="button"
                     onClick={() => {
                       setShowShiftHubModal(false);
-                      onLogout();
+                      handleLogoutRep();
                     }}
                     className="w-full py-2.5 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 active:scale-98 text-rose-700 font-bold text-xs flex items-center justify-center gap-2 border border-rose-200 transition cursor-pointer"
                   >
