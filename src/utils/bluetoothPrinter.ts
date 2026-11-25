@@ -290,6 +290,10 @@ export function build80mmEscPosReceipt(order: Order, settings?: SystemSettings |
     addLine(padTwoColumns('Prior Return Credit Applied:', `-Rs.${order.appliedCreditAmount.toFixed(2)}`));
   }
 
+  if (order.bottleChargeAmount && order.bottleChargeAmount > 0) {
+    addLine(padTwoColumns('Bottle Damage Fee:', `+Rs.${order.bottleChargeAmount.toFixed(2)}`));
+  }
+
   if (order.customer?.returnCreditBalance && order.customer.returnCreditBalance > 0) {
     addLine(padTwoColumns('Next Bill Credit Balance:', `Rs.${order.customer.returnCreditBalance.toFixed(2)}`));
   }

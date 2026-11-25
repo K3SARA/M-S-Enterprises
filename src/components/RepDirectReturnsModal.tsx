@@ -33,6 +33,9 @@ interface ReturnLine {
   returnType: 'DAMAGE' | 'RESALE';
   reason: string;
   billRef?: string;
+  isReturnableBottle?: boolean;
+  bottleDepositFee?: number;
+  chargeBottleFine?: boolean;
 }
 
 interface ReplacementLine {
@@ -145,9 +148,33 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
   const totalReplacementValue = replacementLines.reduce((acc, line) => acc + (line.quantity * line.unitPrice), 0);
   const totalReplacementUnits = replacementLines.reduce((acc, line) => acc + line.quantity, 0);
 
-  // Net calculations for exchange
-  const netPayable = Math.max(0, totalReplacementValue - totalReturnValue);
-  const surplusCreditToNextBill = Math.max(0, totalReturnValue - totalReplacementValue);
+  // Bottle Damage Fine calculations (Rs. 120/bottle for broken glass on returnable products)
+  const totalBottleDamageFine = returnLines.reduce((acc, line) => {
+    if (line.returnType === 'DAMAGE' && line.isReturnableBottle && line.chargeBottleFine !== false) {
+      return acc + (line.quantity * (line.bottleDepositFee || 120));
+    }
+    return acc;
+  }, 0);
+
+  const totalDamagedBottlesCount = returnLines.reduce((acc, line) => {
+    if (line.returnType === 'DAMAGE' && line.isReturnableBottle && line.chargeBottleFine !== false) {
+      return acc + line.quantity;
+    }
+    return acc;
+  }, 0);
+
+  const totalReplacementBottlesCount = replacementLines.reduce((acc, line) => {
+    const p = products.find(prod => prod.id === line.productId);
+    if (p?.isReturnableBottle) {
+      return acc + line.quantity;
+    }
+    return acc;
+  }, 0);
+
+  // Net calculations for exchange (accounting for product values + bottle glass damage fines)
+  const rawProductDifference = totalReplacementValue - totalReturnValue;
+  const netPayable = Math.max(0, rawProductDifference + totalBottleDamageFine);
+  const surplusCreditToNextBill = Math.max(0, totalReturnValue - totalReplacementValue - totalBottleDamageFine);
 
   // Filter returnable products matching search query
   const filteredReturnables = returnableProducts.filter(rp => {
@@ -190,6 +217,9 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
 
       const recentBill = rp.bills[0];
       const billRef = recentBill ? (recentBill.paperBillNumber || recentBill.orderNumber) : undefined;
+      const fullProd = products.find(p => p.id === rp.productId) || rp.product;
+      const isBottle = Boolean(fullProd?.isReturnableBottle);
+      const bottleFee = typeof fullProd?.bottleDepositFee === 'number' ? fullProd.bottleDepositFee : 120;
 
       setReturnLines([
         ...returnLines,
@@ -203,11 +233,49 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
           maxReturnableQty: rp.maxReturnableQty,
           returnType: 'DAMAGE',
           reason: 'Market return / Expired',
-          billRef
+          billRef,
+          isReturnableBottle: isBottle,
+          bottleDepositFee: bottleFee,
+          chargeBottleFine: isBottle
         }
       ]);
     }
     setProductSearch('');
+  };
+
+  const handleToggleBottleFine = (index: number) => {
+    const updated = [...returnLines];
+    updated[index].chargeBottleFine = updated[index].chargeBottleFine === false;
+    setReturnLines(updated);
+  };
+
+  const handleOneClickSwap = (returnLine: ReturnLine) => {
+    const lorryItem = lorryAvailableProducts.find(p => p.id === returnLine.productId);
+    if (!lorryItem) {
+      setError(`"${returnLine.name}" is not currently in lorry stock.`);
+      return;
+    }
+    setSettlementMethod('REPLACE_NOW');
+    const existingIdx = replacementLines.findIndex(l => l.productId === returnLine.productId);
+    if (existingIdx >= 0) {
+      const updated = [...replacementLines];
+      const targetQty = Math.min(lorryItem.availableLorryQty, returnLine.quantity);
+      updated[existingIdx].quantity = targetQty;
+      setReplacementLines(updated);
+    } else {
+      setReplacementLines([
+        ...replacementLines,
+        {
+          productId: lorryItem.id,
+          sku: lorryItem.sku,
+          name: lorryItem.name,
+          unit: lorryItem.unit,
+          quantity: Math.min(lorryItem.availableLorryQty, returnLine.quantity),
+          unitPrice: lorryItem.unitPrice,
+          availableLorryQty: lorryItem.availableLorryQty
+        }
+      ]);
+    }
   };
 
   const handleUpdateReturnQty = (index: number, delta: number) => {
@@ -346,12 +414,20 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
           returnType: line.returnType,
           reason: line.reason
         })),
+        bottleExchange: (totalDamagedBottlesCount > 0 || totalReplacementBottlesCount > 0) ? {
+          deliveredBottles: totalReplacementBottlesCount,
+          returnedGoodBottles: 0,
+          damagedBottles: totalDamagedBottlesCount,
+          missingBottles: 0,
+          chargeMissing: false,
+          bottleChargeAmount: totalBottleDamageFine
+        } : undefined,
         paymentMethod: netPayable > 0 ? exchangePaymentMethod : 'CASH',
         cashReceived: netPayable > 0 && exchangePaymentMethod === 'CASH' ? netPayable : 0,
         isExchangeOrder: isExchange,
         notes: isExchange
-          ? `Item Exchange (${user?.fullName || lorry?.driverName || 'Rep'})${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
-          : `Direct Return Credit Note (${user?.fullName || lorry?.driverName || 'Rep'}) - To Next Bill${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
+          ? `Item Exchange (${user?.fullName || lorry?.driverName || 'Rep'})${totalBottleDamageFine > 0 ? ` | Broken Bottle Fee: Rs. ${totalBottleDamageFine}` : ''}${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
+          : `Direct Return Credit Note (${user?.fullName || lorry?.driverName || 'Rep'}) - To Next Bill${totalBottleDamageFine > 0 ? ` | Broken Bottle Fee: Rs. ${totalBottleDamageFine}` : ''}${paperBillNumber ? ` | Ref: ${paperBillNumber}` : ''}`
       };
 
       const createdOrder = await LorryService.enterDriverBill(lorry.id, payload);
@@ -679,6 +755,50 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                         </button>
                       ))}
                     </div>
+
+                    {/* Returnable Glass Bottle Indicator & Fine Option */}
+                    {line.isReturnableBottle && (
+                      <div className="pt-1.5 border-t border-slate-200/60 flex flex-col gap-1.5">
+                        {line.returnType === 'DAMAGE' ? (
+                          <div className="flex items-center justify-between p-2 rounded-xl bg-amber-50 border border-amber-200 text-xs">
+                            <div className="flex items-center gap-1.5 text-amber-950 font-medium">
+                              <span className="text-sm">🍾</span>
+                              <span>Glass Damaged Fine:</span>
+                              <strong className="font-mono text-amber-900 font-bold">
+                                {formatMoney((line.bottleDepositFee || 120) * line.quantity)}
+                              </strong>
+                            </div>
+                            <button
+                              type="button"
+                              onClick={() => handleToggleBottleFine(idx)}
+                              className={`px-2 py-0.5 rounded-lg text-[10px] font-bold transition cursor-pointer ${
+                                line.chargeBottleFine !== false
+                                  ? 'bg-amber-800 text-white shadow-2xs'
+                                  : 'bg-white text-slate-600 border border-slate-200'
+                              }`}
+                            >
+                              {line.chargeBottleFine !== false ? 'Fine Applied ✓' : 'Waive Fine'}
+                            </button>
+                          </div>
+                        ) : (
+                          <div className="text-[10px] text-emerald-700 font-medium flex items-center gap-1">
+                            <span>🍾 Intact Returnable Glass Bottle (No damage fee)</span>
+                          </div>
+                        )}
+
+                        {/* 1-Click Swap with Filled Bottle from Lorry */}
+                        {lorryAvailableProducts.some(p => p.id === line.productId) && (
+                          <button
+                            type="button"
+                            onClick={() => handleOneClickSwap(line)}
+                            className="w-full py-1.5 px-3 rounded-xl bg-blue-50 hover:bg-blue-100 text-blue-900 border border-blue-200 text-[11px] font-bold flex items-center justify-center gap-1.5 transition cursor-pointer"
+                          >
+                            <ArrowLeftRight className="w-3.5 h-3.5 text-blue-600" />
+                            <span>1-Click Swap with Filled Bottle from Lorry ({lorryAvailableProducts.find(p => p.id === line.productId)?.availableLorryQty} available)</span>
+                          </button>
+                        )}
+                      </div>
+                    )}
                   </div>
                 ))}
               </div>
@@ -857,13 +977,22 @@ export const RepDirectReturnsModal: React.FC<RepDirectReturnsModalProps> = ({
                   {/* Live Exchange Calculation Card */}
                   <div className="p-3 bg-white border border-slate-200/90 rounded-xl space-y-1.5 text-xs shadow-2xs">
                     <div className="flex justify-between text-slate-600">
-                      <span>Total Returned Goods Value:</span>
+                      <span>Total Returned Goods Credit:</span>
                       <span className="font-mono font-bold text-amber-700">-{formatMoney(totalReturnValue)}</span>
                     </div>
                     <div className="flex justify-between text-slate-600">
                       <span>Total Replacement Items:</span>
                       <span className="font-mono font-bold text-blue-700">+{formatMoney(totalReplacementValue)}</span>
                     </div>
+                    {totalBottleDamageFine > 0 && (
+                      <div className="flex justify-between text-amber-900 bg-amber-50/80 px-2 py-1 rounded-lg border border-amber-200">
+                        <span className="flex items-center gap-1 font-semibold">
+                          <span>🍾</span>
+                          <span>Broken Glass Fine ({totalDamagedBottlesCount} btls):</span>
+                        </span>
+                        <span className="font-mono font-bold">+{formatMoney(totalBottleDamageFine)}</span>
+                      </div>
+                    )}
                     <div className="pt-1.5 border-t border-slate-100 flex justify-between items-center font-bold">
                       <span className="text-slate-800">Exchange Net Settlement:</span>
                       {netPayable === 0 && surplusCreditToNextBill === 0 ? (

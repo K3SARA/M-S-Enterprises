@@ -5588,7 +5588,31 @@ export const RepBilling: React.FC<RepBillingProps> = ({
           if (onViewInvoice) {
             onViewInvoice(order);
           }
+          // Immediately deduct any replacement items from local lorry stock in memory (zero UI delay)
+          if (selectedLorryId && Array.isArray(order.items) && order.items.length > 0) {
+            setLorries(prev => prev.map(l => {
+              if (l.id === selectedLorryId && Array.isArray(l.lorryStocks)) {
+                return {
+                  ...l,
+                  lorryStocks: l.lorryStocks.map(ls => {
+                    const swappedItem = order.items.find((oi: any) => oi.productId === ls.productId);
+                    if (swappedItem) {
+                      return {
+                        ...ls,
+                        quantity: Math.max(0, ls.quantity - swappedItem.quantity)
+                      };
+                    }
+                    return ls;
+                  })
+                };
+              }
+              return l;
+            }));
+          }
           loadData();
+          LorryService.getAll().then(updated => {
+            if (Array.isArray(updated) && updated.length > 0) setLorries(updated);
+          }).catch(() => {});
         }}
       />
 

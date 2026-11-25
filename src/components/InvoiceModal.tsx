@@ -447,6 +447,13 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                   </div>
                 )}
 
+                {activeOrder.bottleChargeAmount !== undefined && activeOrder.bottleChargeAmount > 0 && (
+                  <div className="flex justify-between font-bold text-amber-900">
+                    <span>Bottle Damage Fee:</span>
+                    <span>+{formatMoney(activeOrder.bottleChargeAmount)}</span>
+                  </div>
+                )}
+
                 <div className="border-t-2 border-black my-1" />
                 <div className="flex justify-between text-xs font-black py-0.5">
                   <span>NET TOTAL:</span>
@@ -767,6 +774,12 @@ export const InvoiceModal: React.FC<InvoiceModalProps> = ({
                     <div className="flex justify-between text-amber-700 font-medium">
                       <span>Prior Return Credit Applied:</span>
                       <span className="font-mono">-{formatMoney(activeOrder.appliedCreditAmount)}</span>
+                    </div>
+                  )}
+                  {activeOrder.bottleChargeAmount !== undefined && activeOrder.bottleChargeAmount > 0 && (
+                    <div className="flex justify-between text-amber-900 font-semibold">
+                      <span>Bottle Damage Fee:</span>
+                      <span className="font-mono">+{formatMoney(activeOrder.bottleChargeAmount)}</span>
                     </div>
                   )}
                   <div className="flex justify-between text-sm font-bold text-slate-900 border-t border-slate-200 pt-1.5">
