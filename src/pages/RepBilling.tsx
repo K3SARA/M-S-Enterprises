@@ -54,7 +54,8 @@ import {
   UserCheck,
   UserX,
   FileText,
-  Zap
+  Zap,
+  Type
 } from 'lucide-react';
 import {
   Customer,
@@ -82,7 +83,8 @@ import { CustomerReceiptModal } from '../components/CustomerReceiptModal';
 import { RepDirectCollectionModal } from '../components/RepDirectCollectionModal';
 import { RepDirectReturnsModal } from '../components/RepDirectReturnsModal';
 import { LorryStockExchangeModal } from '../components/LorryStockExchangeModal';
-import { FontSizeButton, FontSizeInlineStepper } from '../components/FontSizeControl';
+import { FontSizeModal } from '../components/FontSizeControl';
+import { useFontSize } from '../context/FontSizeContext';
 import { OfflineSyncService, QueuedOfflineBill } from '../services/offlineSync';
 import { executeSystemPrint } from '../utils/bluetoothPrinter';
 import { resolveTierUnitPrice } from '../utils/pricing';
@@ -124,6 +126,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
   onLogout
 }) => {
   const { formatMoney } = useCurrency();
+  const { preset: fontPreset } = useFontSize();
 
   // Current Step: 1 = Customer, 2 = Cart, 3 = Brand, 4 = Products, 5 = Checkout
   const [currentStep, setCurrentStep] = useState<number>(1);
@@ -195,6 +198,7 @@ export const RepBilling: React.FC<RepBillingProps> = ({
 
   // Shift Hub (•••) Modal State (Apple iOS Style)
   const [showShiftHubModal, setShowShiftHubModal] = useState<boolean>(false);
+  const [showFontSizeModal, setShowFontSizeModal] = useState<boolean>(false);
 
   // Add Customer Modal State
   const [showAddCustomerModal, setShowAddCustomerModal] = useState<boolean>(false);
@@ -2335,9 +2339,6 @@ export const RepBilling: React.FC<RepBillingProps> = ({
               </span>
             )}
           </button>
-
-          {/* Display Font Size Quick Toggle */}
-          <FontSizeButton showLabel />
 
           {/* Shift Hub (•••) Consolidated Menu Button */}
           <button
@@ -5639,11 +5640,34 @@ export const RepBilling: React.FC<RepBillingProps> = ({
                   </div>
                   <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-amber-600 transition" />
                 </button>
-              </div>
 
-              {/* Display Font Size Control */}
-              <div className="pt-1">
-                <FontSizeInlineStepper />
+                {/* 6. Display & Text Size Settings */}
+                <button
+                  type="button"
+                  onClick={() => {
+                    setShowShiftHubModal(false);
+                    setShowFontSizeModal(true);
+                  }}
+                  className="w-full p-3.5 rounded-2xl bg-white border border-slate-200 hover:border-blue-400 hover:bg-blue-50/30 transition flex items-center justify-between text-left group shadow-2xs cursor-pointer"
+                >
+                  <div className="flex items-center gap-3">
+                    <div className="w-9 h-9 rounded-xl bg-blue-100 text-[#0C3B9B] flex items-center justify-center shrink-0 group-hover:scale-105 transition">
+                      <Type className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2">
+                        <span className="text-xs font-bold text-slate-800">Display & Text Size</span>
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-md bg-blue-50 text-[#0C3B9B] border border-blue-200 font-mono">
+                          {fontPreset.percentage}% • {fontPreset.label}
+                        </span>
+                      </div>
+                      <p className="text-[11px] text-slate-500 mt-0.5">
+                        Increase or decrease font size for mobile field readability
+                      </p>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-4 h-4 text-slate-400 group-hover:text-blue-600 transition" />
+                </button>
               </div>
 
               {/* End Shift & Logout */}
@@ -5722,6 +5746,12 @@ export const RepBilling: React.FC<RepBillingProps> = ({
             if (Array.isArray(updated) && updated.length > 0) setLorries(updated);
           }).catch(() => {});
         }}
+      />
+
+      {/* DISPLAY & TEXT SIZE SETTINGS MODAL */}
+      <FontSizeModal
+        isOpen={showFontSizeModal}
+        onClose={() => setShowFontSizeModal(false)}
       />
 
       {/* CUSTOMER PAYMENT RECEIPT MODAL */}
