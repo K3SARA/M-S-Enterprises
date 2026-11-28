@@ -928,8 +928,12 @@ export const Settings: React.FC = () => {
                 </label>
                 <select
                   value={settings.defaultCurrency}
-                  onChange={(e) => setSettings({ ...settings, defaultCurrency: e.target.value })}
-                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500"
+                  onChange={(e) => {
+                    const nextCurrency = e.target.value as CurrencyCode;
+                    setSettings({ ...settings, defaultCurrency: nextCurrency });
+                    setCurrency(nextCurrency);
+                  }}
+                  className="w-full bg-slate-50 border border-slate-200 rounded-xl px-3.5 py-2.5 text-sm font-bold text-slate-900 focus:outline-none focus:ring-2 focus:ring-blue-500 cursor-pointer"
                 >
                   <option value="LKR">LKR (Rs. - Sri Lanka)</option>
                   <option value="USD">USD ($ - US Dollar)</option>

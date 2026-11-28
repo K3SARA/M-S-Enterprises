@@ -9,7 +9,6 @@ import {
   BarChart3,
   ShieldCheck,
   Database,
-  Coins,
   Settings as SettingsIcon,
   TrendingUp,
   TrendingDown,
@@ -24,8 +23,6 @@ import {
   Clock,
   X
 } from 'lucide-react';
-import { useCurrency, CURRENCIES, CurrencyCode } from '../context/CurrencyContext';
-import { FontSizeInlineStepper } from './FontSizeControl';
 import { User } from '../types';
 
 interface SidebarProps {
@@ -56,8 +53,6 @@ export const Sidebar: React.FC<SidebarProps> = ({
   currentUser,
   onLogout
 }) => {
-  const { currency, setCurrency } = useCurrency();
-
   const sections: SidebarSection[] = [
     {
       title: 'Overview',
@@ -213,34 +208,8 @@ export const Sidebar: React.FC<SidebarProps> = ({
         </nav>
       </div>
 
-      {/* Footer System Status & Currency Selector */}
+      {/* Footer System Status */}
       <div className="p-4 border-t border-slate-100 space-y-2.5 bg-white shrink-0">
-        {/* App Text Size Adjuster */}
-        <FontSizeInlineStepper />
-
-        {/* Currency Switcher */}
-        <div className="bg-slate-50 border border-slate-200/80 p-3 rounded-2xl space-y-2 shadow-2xs">
-          <div className="flex items-center justify-between text-xs font-bold uppercase tracking-wider text-slate-500">
-            <span className="flex items-center gap-1.5 text-[11px]">
-              <Coins className="w-3.5 h-3.5 text-[#0C3B9B]" /> Currency
-            </span>
-            <span className="text-[11px] font-bold text-[#0C3B9B] bg-blue-50 px-2 py-0.5 rounded-md border border-blue-200">
-              {CURRENCIES[currency].symbol}
-            </span>
-          </div>
-          <select
-            value={currency}
-            onChange={(e) => setCurrency(e.target.value as CurrencyCode)}
-            className="w-full bg-white border border-slate-200 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 focus:outline-none focus:ring-2 focus:ring-[#0C3B9B]/20 focus:border-[#0C3B9B] shadow-2xs cursor-pointer transition-colors"
-          >
-            <option value="LKR">LKR (Rs. - Sri Lanka)</option>
-            <option value="USD">USD ($ - US Dollar)</option>
-            <option value="INR">INR (₹ - Indian Rupee)</option>
-            <option value="EUR">EUR (€ - Euro)</option>
-            <option value="GBP">GBP (£ - British Pound)</option>
-          </select>
-        </div>
-
         {/* Database & Engine Status */}
         <div className="pt-0.5 space-y-1.5">
           <div className="flex items-center justify-between text-xs text-slate-400">
